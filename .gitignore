@@ -1,0 +1,7 @@
+node_modules/
+.DS_Store
+*.log
+
+# No real financial data in this repo. Plans live in the browser (localStorage) plus
+# export/import files kept privately. Only EXAMPLE templates belong here.
+data/*.local.json

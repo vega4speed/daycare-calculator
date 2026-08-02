@@ -1,0 +1,114 @@
+{
+  "_meta": {
+    "purpose": "Tennessee-specific licensing and subsidy figures the engine depends on. Same convention as the retirement calculator's tax-tables.json: every number here is VERIFIED against a primary source and cited, or explicitly marked unverified.",
+    "sources": [
+      {
+        "id": "tn-rules-1240-04-01",
+        "title": "Rules of the Tennessee Department of Human Services — Licensure Rules for Child Care Agencies, Chapter 1240-04-01",
+        "url": "https://publications.tnsosfiles.com/rules/1240/1240-04/1240-04-01.20251120.pdf",
+        "revision": "November 20, 2025 (Revised)",
+        "retrieved": "2026-08-02",
+        "note": "Ratios/group sizes read from Rule 1240-04-01-.22(1)(c), Charts 1 and 2, verified in raw page order (pages 82-83)."
+      },
+      {
+        "id": "tn-ccc-rates-2026",
+        "title": "Child Care Certificate Program Provider Weekly Reimbursement Rates Including QRIS Scorecard Bonus Payments",
+        "url": "https://www.tn.gov/content/dam/tn/human-services/documents/Reimbursement_Rate_Chart_1.1.26.pdf",
+        "effective": "2026-01-01",
+        "retrieved": "2026-08-02"
+      }
+    ],
+    "verified": true,
+    "unverifiedItems": [
+      "Nothing in this file is a guess. Figures NOT yet sourced (and therefore absent rather than estimated): TN employer SUTA rate/wage base for a new nonprofit employer, licensing fee schedule beyond the plan document's stated $879, and CACFP food-program reimbursement rates."
+    ]
+  },
+
+  "ratios": {
+    "_note": "adult:child ratio expressed as childrenPerAdult. maxGroupSize null = no maximum. Rule 1240-04-01-.22(1)(c).",
+    "_variance": "Rule .22(1)(b)1 permits exceeding ratio and group size by up to 10% (rounded to nearest whole number) no more than 3 days/week, never exceeding licensed capacity, and NEVER for infant or toddler groups. Not modeled by default — it is an exception, not a planning basis.",
+    "_secondAdultRule": "Rule .22(1)(b)2: when more than 12 children are present on the premises, a second adult shall be physically available. This binds at launch enrollment (12-14) independent of ratio.",
+
+    "chart1_singleAge": [
+      { "id": "infant",      "label": "6 weeks – 15 months",   "minMonths": 1.5, "maxMonths": 15,   "childrenPerAdult": 4,  "maxGroupSize": 8 },
+      { "id": "youngToddler","label": "12 – 30 months",        "minMonths": 12,  "maxMonths": 30,   "childrenPerAdult": 6,  "maxGroupSize": 12 },
+      { "id": "age2",        "label": "Two (2) years",         "minMonths": 24,  "maxMonths": 36,   "childrenPerAdult": 7,  "maxGroupSize": 14 },
+      { "id": "age3",        "label": "Three (3) years",       "minMonths": 36,  "maxMonths": 48,   "childrenPerAdult": 9,  "maxGroupSize": 18 },
+      { "id": "age4",        "label": "Four (4) years",        "minMonths": 48,  "maxMonths": 60,   "childrenPerAdult": 13, "maxGroupSize": 24 },
+      { "id": "age5",        "label": "Five (5) years",        "minMonths": 60,  "maxMonths": 72,   "childrenPerAdult": 16, "maxGroupSize": 24 },
+      { "id": "schoolAge",   "label": "School-age",            "minMonths": 60,  "maxMonths": null, "childrenPerAdult": 20, "maxGroupSize": null }
+    ],
+
+    "chart2_multiAge": [
+      { "id": "m_6wk_30mo",  "label": "6 weeks – 30 months",        "childrenPerAdult": 5,  "maxGroupSize": 10 },
+      { "id": "m_12_36mo",   "label": "12 months – 36 months",      "childrenPerAdult": 6,  "maxGroupSize": 12 },
+      { "id": "m_2_4yr",     "label": "Two – Four years",           "childrenPerAdult": 8,  "maxGroupSize": 16 },
+      { "id": "m_2h_3yr",    "label": "2½ – Three years (30–47 mo)","childrenPerAdult": 9,  "maxGroupSize": 18 },
+      { "id": "m_2_3yr",     "label": "Two – Three years",          "childrenPerAdult": 8,  "maxGroupSize": 16 },
+      { "id": "m_2h_5yr",    "label": "2½ – Five years",            "childrenPerAdult": 11, "maxGroupSize": 20 },
+      { "id": "m_2h_12yr",   "label": "2½ – Twelve years",          "childrenPerAdult": 11, "maxGroupSize": 20 },
+      { "id": "m_3_4yr",     "label": "Three – Four years",         "childrenPerAdult": 12, "maxGroupSize": 24 },
+      { "id": "m_3_5yr",     "label": "Three – Five years",         "childrenPerAdult": 13, "maxGroupSize": 24 },
+      { "id": "m_4_5yr",     "label": "Four – Five years",          "childrenPerAdult": 16, "maxGroupSize": 24 },
+      { "id": "m_4_6yr",     "label": "Four – Six years",           "childrenPerAdult": 16, "maxGroupSize": 24 },
+      { "id": "m_5_12yr",    "label": "Five – Twelve years",        "childrenPerAdult": 20, "maxGroupSize": null }
+    ],
+
+    "chart3_combinedFirstLastHour": {
+      "_note": "Rule .22(1)(c)3 — allowable ONLY for the first and last hour and a half of each day. Relevant to opening/closing staffing cost, not to the core ratio requirement.",
+      "groups": [
+        { "label": "2½ – Five years",     "childrenPerAdult": 11, "maxGroupSize": 20 },
+        { "label": "Three – Twelve years","childrenPerAdult": 15, "maxGroupSize": 20 },
+        { "label": "Four – Twelve years", "childrenPerAdult": 20, "maxGroupSize": 20 },
+        { "label": "13 – 17 years",       "childrenPerAdult": 20, "maxGroupSize": 20 }
+      ]
+    }
+  },
+
+  "dhsCertificate": {
+    "_note": "Child Care Certificate Program (Smart Steps) provider reimbursement. Rates are WEEKLY and full-time. Part-time is one-half the full-time rate, rounded up.",
+    "effective": "2026-01-01",
+    "countyTier": {
+      "_note": "'Top Tier' counties are the 20 highest average population in 2023 and/or 20 highest per-capita income in 2023.",
+      "davidson": "top",
+      "topTierCounties": [
+        "Anderson","Blount","Bradley","Cheatham","Davidson","Dickson","Fayette","Gibson","Greene",
+        "Hamilton","Henry","Knox","Loudon","Madison","Maury","Montgomery","Putnam","Robertson",
+        "Rutherford","Sevier","Shelby","Sullivan","Sumner","Washington","Williamson","Wilson"
+      ]
+    },
+    "weeklyRates": {
+      "childCareCenters": {
+        "infant":    { "label": "6 wks – 13 mos",        "top": 260.0, "lower": 170.0 },
+        "toddler":   { "label": "13 mos – 31 mos",       "top": 240.0, "lower": 160.0 },
+        "preschool": { "label": "31 mos – Kindergarten", "top": 208.0, "lower": 148.0 },
+        "schoolIn":  { "label": "School In",             "top": 79.0,  "lower": 75.0 },
+        "schoolOut": { "label": "School Out",            "top": 143.0, "lower": 110.0 }
+      }
+    },
+    "qrisBonus": {
+      "_note": "QRIS Scorecard bonus for TDHS Licensed Providers, applied on top of the state rate.",
+      "score80to89": 0.05,
+      "score90to100": 0.10
+    },
+    "differentials": {
+      "_note": "Applied above the current reimbursement rate.",
+      "disabilitiesAndSpecialNeeds": { "rate": 0.15, "since": "2021-10-01" },
+      "infant": { "rate": 0.15, "since": "2023-10-01" },
+      "_eliminated": "Effective 2025-10-01, differentials for TODDLERS, for child care deserts / distressed counties, and for non-traditional-hour care were eliminated. Do not model them."
+    },
+    "ageBandBoundaryMonths": {
+      "_note": "IMPORTANT: DHS reimbursement age bands do NOT line up with the program's own room age bands. DHS 'toddler' ends and 'preschool' begins at 31 months, mid-way through the program's 2-3 year old toddler room.",
+      "infantToToddler": 13,
+      "toddlerToPreschool": 31
+    }
+  },
+
+  "derived": {
+    "_note": "Convenience figures computed from the verified numbers above; recomputed in tests, stored here only for reference. Monthly = weekly * 52 / 12.",
+    "monthlyDhsTopTier": {
+      "toddler": 1040.0,
+      "preschool": 901.33
+    }
+  }
+}

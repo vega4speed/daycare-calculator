@@ -116,10 +116,13 @@ export function project(plan) {
   // ramp it grows every month rather than washing out, which is the whole point.
   let receivable = 0;
 
+  // --- PASS 1: enrollment and coverage ----------------------------------------------------
+  // Enrollment and the staff-hours it requires depend only on the plan, never on cash — so they
+  // are computed for every month up front. That is what makes HIRE LEAD TIME possible: staffing
+  // in month m can look ahead to the enrollment of month m + lead, which a single forward pass
+  // could not do. Everything money-related happens in pass 2.
+  const pre = [];
   for (let month = months.from; month <= months.to; month++) {
-    const monthsElapsed = month - months.from;
-
-    // --- enrollment -----------------------------------------------------------------
     const targetByGroup = {};
     const enrollmentByGroup = {};
     for (const g of groups) {
@@ -148,9 +151,6 @@ export function project(plan) {
       );
     }
 
-    const childrenServed = allocation.served;
-
-    // --- staffing -------------------------------------------------------------------
     const openHour = at(settings.hoursOpen, month, null, 7.5);
     const closeHour = at(settings.hoursClose, month, null, 16.5);
 
@@ -179,8 +179,47 @@ export function project(plan) {
       peakAdults += s.peakAdults;
     }
 
-    // The point-in-time ratio requirement, for comparison against the schedule-aware figure.
-    const requirement = staffingRequirement(allocation, rooms, tables.ratios);
+    pre.push({
+      month,
+      allocation,
+      capacity,
+      servedByGroup,
+      weeklyStaffHours,
+      fte,
+      peakAdults,
+      staffingByGroup,
+      openRoomCount: openRooms(rooms, month).length,
+      // The point-in-time ratio requirement, for comparison against the schedule-aware figure.
+      requirement: staffingRequirement(allocation, rooms, tables.ratios),
+    });
+  }
+
+  /**
+   * Peak of a field over the hiring lookahead window. Staff are hired before the enrollment that
+   * justifies them, so month m must be staffed for the busiest month in [m, m + lead] — the
+   * business plan names "hiring too early" as a top risk, which makes this an explicit lever
+   * rather than something buried in an assumption.
+   */
+  const lookahead = (index, field, leadMonths) => {
+    let peak = pre[index][field];
+    for (let k = 1; k <= leadMonths && index + k < pre.length; k++) {
+      peak = Math.max(peak, pre[index + k][field]);
+    }
+    return peak;
+  };
+
+  // --- PASS 2: money -----------------------------------------------------------------------
+  for (let i = 0; i < pre.length; i++) {
+    const {
+      month, allocation, capacity, servedByGroup, weeklyStaffHours, fte, peakAdults,
+      staffingByGroup, openRoomCount: roomsOpenNow, requirement,
+    } = pre[i];
+    const monthsElapsed = month - months.from;
+    const childrenServed = allocation.served;
+
+    const hireLeadMonths = Math.max(0, at(settings.hireLeadMonths, month, null, 0));
+    const staffedCoverageHours = lookahead(i, 'weeklyStaffHours', hireLeadMonths);
+    const staffedRoomCount = lookahead(i, 'openRoomCount', hireLeadMonths);
 
     // --- payroll --------------------------------------------------------------------
     // Three modes, all producing the same row shape:
@@ -188,7 +227,6 @@ export function project(plan) {
     //   'derived' staff-hours x one blended wage — no roles, no director, no buffer
     //   'setting' a typed monthly figure
     const wageEscalator = cumulativeEscalator(escalators.wage ?? 0, monthsElapsed);
-    const openRoomCount = openRooms(rooms, month).length;
 
     let seats = [];
     let seatSummary = null;
@@ -197,8 +235,8 @@ export function project(plan) {
 
     if (payrollMode === 'roles') {
       demand = roleDemand({
-        coverageHours: weeklyStaffHours,
-        openRoomCount,
+        coverageHours: staffedCoverageHours,
+        openRoomCount: staffedRoomCount,
         roles,
         policy: {
           leadsPerRoom: at(settings.leadsPerRoom, month, null, 1),
@@ -226,7 +264,7 @@ export function project(plan) {
     } else {
       const grossWages =
         payrollMode === 'derived'
-          ? (weeklyStaffHours * at(settings.wagePerHour, month, null, 0) * wageEscalator * 52) / 12
+          ? (staffedCoverageHours * at(settings.wagePerHour, month, null, 0) * wageEscalator * 52) / 12
           : at(settings.payroll, month, null, 0) * wageEscalator;
       const employerTax = grossWages * employerTaxRate;
       payrollDetail = {
@@ -254,6 +292,27 @@ export function project(plan) {
       collectionsLoss: at(settings.collectionsLoss, month, null, 0),
       gapPolicy,
     });
+
+    // --- attrition ------------------------------------------------------------------
+    // Enrollment is entered as an absolute target (PLAN.md §4.2), so attrition does NOT reduce
+    // it — the target already is what you expect to have. What attrition tells you is how hard
+    // you have to work to hold that number: at 3%/mo churn, a 36-child program must enroll
+    // roughly one new family every month just to stand still.
+    //
+    // Reported rather than applied, because it is a marketing and waitlist question, not a
+    // revenue adjustment. Silently shrinking a number the user typed is the thing this model
+    // deliberately does not do.
+    const attritionRate = Math.max(0, at(settings.attrition, month, null, 0));
+    const departuresExpected = childrenServed * attritionRate;
+    const growth = i > 0 ? childrenServed - pre[i - 1].allocation.served : childrenServed;
+    const acquisitionCost = at(settings.acquisitionCost, month, null, 0);
+    const attrition = {
+      rate: attritionRate,
+      departuresExpected,
+      // To hold the line AND grow: replace the leavers, then add the increase.
+      newEnrollmentsNeeded: departuresExpected + Math.max(0, growth),
+      acquisitionCost: (departuresExpected + Math.max(0, growth)) * acquisitionCost,
+    };
 
     // --- turnover -------------------------------------------------------------------
     // Computed after revenue because the enrollment-loss cost needs revenue per child, and
@@ -311,7 +370,10 @@ export function project(plan) {
       oneTime: at(settings.oneTime, month, null, 0),
       payroll,
       escalators,
-      other: turnover ? { turnover: turnover.totalCost } : {},
+      other: {
+        ...(turnover ? { turnover: turnover.totalCost } : {}),
+        ...(attrition.acquisitionCost > 0 ? { acquisition: attrition.acquisitionCost } : {}),
+      },
     });
 
     // --- cash -----------------------------------------------------------------------
@@ -350,7 +412,12 @@ export function project(plan) {
         demand,
         seats: seatSummary,
         headcount: seatSummary?.headcount ?? null,
+        hireLeadMonths,
+        // Coverage actually staffed for, which exceeds this month's own need when hiring ahead.
+        staffedCoverageHours,
+        hiringAhead: staffedCoverageHours > weeklyStaffHours,
       },
+      attrition,
       payroll: payrollDetail,
       turnover,
       revenue,
@@ -386,7 +453,11 @@ export function summarize(rows, startingCash = 0) {
     null,
   );
 
-  const everNegative = rows.some((r) => r.cash < 0);
+  // Half a cent of tolerance. Without it, a plan funded to EXACTLY the solved minimum reports
+  // running out of cash, because the accumulated floating-point error on a long chain of monthly
+  // flows lands a hair below zero. Found by solve.js asserting that its own answer is sufficient.
+  const CASH_EPSILON = 0.005;
+  const everNegative = rows.some((r) => r.cash < -CASH_EPSILON);
 
   return {
     firstProfitableMonth,

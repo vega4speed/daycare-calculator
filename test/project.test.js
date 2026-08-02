@@ -468,3 +468,93 @@ test('turnover reports children lost, so the revenue effect stays visible', () =
   assert.ok(m.turnover.childrenLost > 0);
   assert.ok(m.turnover.byRole.teacher.revenueLost > 0);
 });
+
+// --- Phase 4: hire lead time and attrition -------------------------------------------------
+
+test('hire lead time staffs for the enrollment that is coming, not the one present', () => {
+  const late = rolesPlan();
+  const early = rolesPlan();
+  early.settings.hireLeadMonths = { default: 1 };
+
+  // The second room opens in month 4, so month 3 should already carry its staff.
+  const m3 = (p) => project(p).rows.find((x) => x.month === 3);
+  assert.equal(m3(late).staffing.hiringAhead, false);
+  assert.equal(m3(early).staffing.hiringAhead, true);
+  assert.ok(m3(early).payroll.total > m3(late).payroll.total);
+  assert.ok(m3(early).staffing.seats.headcount > m3(late).staffing.seats.headcount);
+});
+
+test('hiring ahead costs money without adding revenue -- the plan\'s named risk', () => {
+  const late = project(rolesPlan());
+  const early = rolesPlan();
+  early.settings.hireLeadMonths = { default: 2 };
+  const r = project(early);
+
+  const m = (x, mo) => x.rows.find((y) => y.month === mo);
+  near(m(r, 2).revenue.revenue, m(late, 2).revenue.revenue, 0.01, 'same children');
+  assert.ok(m(r, 2).net < m(late, 2).net, 'but a worse month');
+  assert.ok(r.lowestCash < late.lowestCash, 'and a deeper cash hole');
+});
+
+test('a lead time past the horizon does not run off the end of the array', () => {
+  const p = rolesPlan();
+  p.settings.hireLeadMonths = { default: 999 };
+  const r = project(p);
+  assert.equal(r.rows.length, 15);
+  assert.ok(r.rows.every((x) => Number.isFinite(x.payroll.total)));
+});
+
+test('zero lead time leaves staffing exactly as it was', () => {
+  const a = project(rolesPlan());
+  const b = rolesPlan();
+  b.settings.hireLeadMonths = { default: 0 };
+  const r = project(b);
+  for (let i = 0; i < a.rows.length; i++) {
+    near(a.rows[i].payroll.total, r.rows[i].payroll.total, 0.01);
+  }
+});
+
+test('attrition is reported as replacement demand, never applied to the target', () => {
+  // The absolute-target decision (PLAN.md 4.2) means attrition must not silently shrink
+  // enrollment. What it tells you is how many families you must recruit to stand still.
+  const flat = project(rolesPlan());
+  const churn = rolesPlan();
+  churn.settings.attrition = { default: 0.03 };
+  const r = project(churn);
+
+  const m = (x) => x.rows.find((y) => y.month === 12);
+  assert.equal(m(r).enrollment.served, m(flat).enrollment.served, 'enrollment is untouched');
+  near(m(r).revenue.revenue, m(flat).revenue.revenue, 0.01, 'and so is revenue');
+
+  near(m(r).attrition.departuresExpected, 36 * 0.03);
+  near(m(r).attrition.newEnrollmentsNeeded, 36 * 0.03, 0.01, 'steady state: just replacement');
+});
+
+test('a growth month needs replacements PLUS the increase', () => {
+  const p = rolesPlan();
+  p.settings.attrition = { default: 0.03 };
+  const r = project(p);
+  // Month 8 goes from 24 to 36 children.
+  const m8 = r.rows.find((x) => x.month === 8);
+  near(m8.attrition.departuresExpected, 36 * 0.03);
+  near(m8.attrition.newEnrollmentsNeeded, 36 * 0.03 + 12, 0.01);
+});
+
+test('acquisition cost lands as an expense line only when configured', () => {
+  const p = rolesPlan();
+  p.settings.attrition = { default: 0.03 };
+  const noCost = project(p).rows.find((x) => x.month === 12);
+  assert.equal(noCost.expenses.lines.acquisition, undefined);
+
+  p.settings.acquisitionCost = { default: 250 };
+  const withCost = project(p).rows.find((x) => x.month === 12);
+  near(withCost.expenses.lines.acquisition, 36 * 0.03 * 250, 0.01);
+  assert.ok(withCost.net < noCost.net);
+});
+
+test('no attrition setting means no churn and no cost', () => {
+  const m = project(rolesPlan()).rows.find((x) => x.month === 12);
+  assert.equal(m.attrition.rate, 0);
+  assert.equal(m.attrition.departuresExpected, 0);
+  assert.equal(m.attrition.acquisitionCost, 0);
+});

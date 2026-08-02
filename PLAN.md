@@ -566,6 +566,87 @@ offer letter) but worth revisiting.
 
 ---
 
+## 4.12 Phase 4 results (2026-08-02) — the solvers
+
+`engine/solve.js`. Each solver runs the whole projection repeatedly against a varied input;
+none is a mode of `project()`. Search method is chosen per problem rather than reaching for
+binary search everywhere — minimum capital is algebraic, break-even enrollment is a staircase
+(staff arrive in whole people, so an integer scan is exact where bisection can land mid-step),
+and required tuition is genuinely continuous.
+
+### Finding: the launch phase cannot break even at any enrollment
+
+The business plan states two break-even points: "Lean startup: 12–14 students" and "Full
+staffing: 22–24 students."
+
+| | Plan says | Model says |
+|---|---|---|
+| Lean launch (1 room) | 12–14 children | **Not achievable at any enrollment** |
+| Two rooms open (month 4+) | — | **23 children** |
+| Full staffing (3 rooms) | 22–24 children | **34 children** |
+
+**The plan's full-staffing figure is very nearly right** — 23 against a stated 22–24, arrived at
+independently. That's a good sign for the rest of its cost work.
+
+**The lean launch figure is not.** At a single 14-seat room with a lead, a teacher, and a
+part-time director, no enrollment the room can legally hold covers the cost. Breaking even at
+launch capacity would take tuition of about **$1,509** against the planned $1,100 — a 37%
+increase. The launch phase is a deliberate investment, not a self-funding step, and it should be
+presented that way.
+
+### Finding: each room you open raises your break-even
+
+Break-even rises from 23 children (two rooms) to 34 (three rooms), because opening a room adds
+staff before it adds children. This is exactly the "overexpansion" risk the plan names in §10, now
+quantified: **a room opened ahead of demand moves the break-even line away from you faster than it
+adds capacity.** The phased strategy is right; the sequencing needs to follow enrollment, not a
+calendar.
+
+### Finding: the cash requirement is an order of magnitude above the plan's startup costs
+
+Under a realistic configuration (38-child target, 50% DHS mix with a one-month reimbursement lag,
+one month of hire lead time, 3% monthly attrition):
+
+| | |
+|---|---|
+| Deepest cash point | **−$46,101**, in month 4 |
+| Required starting capital, with a $10k operating floor | **$56,101** |
+| The plan's stated startup costs | $2,200–4,000 |
+
+Those are different quantities and the plan only ever names the second. Startup *costs* are the
+licensing fee, signage, and ads. What the church actually has to front is **the accumulated
+operating loss until the program turns**, plus the DHS receivable, plus a working buffer. Nothing
+in the plan document currently asks for that number.
+
+Sensitivity worth stating plainly: this figure moves a lot with the DHS mix and lag, with hire
+lead time, and with how fast enrollment ramps. It is not a precise forecast — it is the right
+order of magnitude, and it is tens of thousands rather than thousands.
+
+### Attrition, and why it is reported rather than applied
+
+Enrollment is an absolute target (§4.2), so attrition must not silently shrink it — that would
+make the model disagree with the number you typed. Instead it reports **replacement demand**: at
+3% monthly churn, a 38-child program loses about **1.14 children a month** and must therefore
+enrol 1.14 new families a month just to stand still. In a growth month the requirement is
+replacements *plus* the increase. That reframes attrition as the marketing and waitlist question
+it actually is, and it feeds an optional per-acquisition cost line.
+
+### Hire lead time
+
+Deferred from Phase 3, now in. `project()` runs in two passes — enrollment and coverage first for
+every month, then money — because staffing in month *m* must be able to see the enrollment of
+month *m + lead*, which a single forward pass cannot do. Hiring a month early is visible in the
+row as `staffing.hiringAhead`, and it costs real money with no revenue against it, which is the
+plan's own "hiring too early" risk made explicit rather than assumed away.
+
+**Fixed while building this:** `summarize()` reported `runsOutOfCash` for a plan funded to
+*exactly* the solved minimum, because accumulated floating-point error on a long chain of monthly
+flows landed a hair below zero. Now tolerant to half a cent. Found by a solver asserting its own
+answer was sufficient — the kind of bug that only shows up when two parts of a system check each
+other.
+
+---
+
 ## 5. Engine layout
 
 ```
@@ -581,8 +662,9 @@ engine/
                     status -- see the module header, it is a real legal question)
   expenses.js       per-child / fixed / escalated cost lines
   project.js        the month loop: ties it together, carries cash forward
-  solve.js          break-even enrollment, minimum startup capital, first-profitable month,
-                    and the floater/comp optimum (§4.8) — searches OVER project(), not modes of it
+  solve.js          minimum startup capital (algebraic), break-even enrollment (integer scan,
+                    because the answer is a staircase), required tuition (bisection), and the
+                    floater/comp grid (§4.8) — searches OVER project(), not modes of it
 data/
   tn-childcare.json ratios, group sizes, DHS rates — VERIFIED with citations, or clearly marked TBD
   payroll.json      FICA/FUTA/SUTA rates and wage bases, per year
@@ -653,7 +735,11 @@ None of these block building — they're what the calculator is *for*.
    phase does not break even, and the comp-above-midpoint case is fragility, not ROI.
    *Deferred from this phase:* hire lead time (hiring N months ahead of the enrollment that
    justifies it) — the seats model supports it, but it needs a demand-lookahead pass.
-5. **Phase 4** — DHS split, collections, payment lag
+5. ~~**Phase 4** — DHS split, collections, payment lag~~ **PULLED FORWARD into Phase 2**
+   (revenue needed it). Phase 4 instead delivered the **solvers** (`engine/solve.js`), plus the
+   **hire lead time** deferred from Phase 3 and **attrition** from the variable inventory.
+   220 tests. See §4.12 — the launch cannot break even at any enrollment, and the real cash
+   requirement is ~$56k, not the $2,200–4,000 of startup costs the plan names.
 6. **Phase 5** — UI: accounts-editor analog (rooms/groups), setting controls, month table, chart
 7. **Phase 6** — solvers (break-even, minimum capital), transitions narration
 8. **Phase 7** — scenarios + comparison

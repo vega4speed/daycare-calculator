@@ -17,7 +17,7 @@ Assumptions can be set once and changed at any month — see "sticky overrides" 
 
 ## Status
 
-**Phases 0–3 complete.** The override resolver, capacity/ratios, operating hours and schedules, revenue, expenses, the month loop with cash carry, and roles/payroll/turnover. See `PLAN.md` for
+**Phases 0–4 complete.** The override resolver, capacity/ratios, operating hours and schedules, revenue, expenses, the month loop with cash carry, roles/payroll/turnover, and the solvers. See `PLAN.md` for
 the full design, the variable inventory, verified Tennessee figures, and the build order.
 
 ```
@@ -31,8 +31,9 @@ engine/staffing.js       roles and seats, and the early-hire wage premium
 engine/payroll.js        wages -> total employer cost (FICA; FUTA/SUTA pending nonprofit status)
 engine/turnover.js       comp position -> turnover -> what it costs
 engine/project.js        the month loop: cash carry, DHS payment lag, headline answers
+engine/solve.js          break-even enrollment, minimum capital, required tuition, staffing grid
 data/tn-childcare.json   verified TN licensing ratios + DHS reimbursement rates, cited
-test/                    node:test suites — 193 passing
+test/                    node:test suites — 220 passing
 ```
 
 ## Sticky overrides

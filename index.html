@@ -136,11 +136,17 @@
   td.pos { color: var(--good); }
   .toggle { color: var(--muted); width: 22px; }
 
-  .detail td { background: var(--bg); }
+  /* The month rows set white-space: nowrap so figures never break mid-number. That inherits into
+     the expanded panel, where the content is prose and must wrap. Note the selector: `.detail td`
+     alone LOSES to `table.months td` on specificity (one class + one element vs one class + two),
+     so the nowrap kept winning and sentences kept truncating. */
+  table.months tr.detail td { background: var(--bg); white-space: normal; text-align: left; }
   .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; padding: 6px 2px; text-align: left; }
   .detail-grid h4 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
   .detail-grid ul { margin: 0; padding-left: 16px; font-size: 12.5px; }
-  .mini-table td:last-child { text-align: right; }
+  .detail-grid p { margin: 6px 0 0; overflow-wrap: anywhere; }
+  table.months tr.detail .mini-table td { white-space: normal; }
+  table.months tr.detail .mini-table td:last-child { text-align: right; white-space: nowrap; }
   .mini-table tr.total td { font-weight: 600; }
   .t-good { color: var(--good); }
   .t-warn { color: var(--warn); }

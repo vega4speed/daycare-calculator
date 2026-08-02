@@ -82,6 +82,9 @@ export function projectFor(state, { cashFloor = 10000 } = {}) {
  * data plus the previous row, so it never needs a lookahead or a second pass. These are the
  * things a reader would otherwise have to spot by comparing numbers across rows.
  */
+/** Headcount is fractional when a sub-month hire lead prorates a seat; don't print the raw float. */
+const people = (v) => (Number.isInteger(v ?? 0) ? String(v ?? 0) : (v ?? 0).toFixed(1));
+
 export function transitionsFor(row, prev, state) {
   const out = [];
   if (!row) return out;
@@ -98,8 +101,14 @@ export function transitionsFor(row, prev, state) {
   if (prev) {
     const before = prev.staffing?.seats?.headcount ?? 0;
     const now = row.staffing?.seats?.headcount ?? 0;
-    if (now > before) out.push({ kind: 'info', text: `Staff grows to ${now} (from ${before})` });
-    if (now < before) out.push({ kind: 'info', text: `Staff falls to ${now} (from ${before})` });
+    // Compare rounded, so a hair of proration does not read as a staffing change.
+    const changed = Math.abs(now - before) >= 0.05;
+    if (changed && now > before) {
+      out.push({ kind: 'info', text: `Staff grows to ${people(now)} (from ${people(before)})` });
+    }
+    if (changed && now < before) {
+      out.push({ kind: 'info', text: `Staff falls to ${people(now)} (from ${people(before)})` });
+    }
 
     if (prev.net < 0 && row.net >= 0) out.push({ kind: 'good', text: 'First profitable month' });
     if (prev.net >= 0 && row.net < 0) out.push({ kind: 'warn', text: 'Back into monthly loss' });

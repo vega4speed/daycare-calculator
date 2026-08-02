@@ -749,7 +749,10 @@ None of these block building — they're what the calculator is *for*.
    named FROZEN copy, compare 2–4 side by side: a cash-balance chart (validated categorical
    palette, colour assigned once per scenario at save time so it never repaints when the selection
    changes), a headline table, and a "what differs" diff so you can see what you actually changed.
-9. **Phase 8** — enable GitHub Pages. MANUAL STEP (no `gh` CLI on this machine):
-   Settings → Pages → Source: "Deploy from a branch" → Branch `main`, folder `/ (root)` → Save.
-   The site is entirely static with no build step, so it works as-is from the repo root; it will
-   appear at https://vega4speed.github.io/daycare-calculator/ within a minute or two.
+9. ~~**Phase 8** — enable GitHub Pages~~ **DONE.** Live at
+   https://vega4speed.github.io/daycare-calculator/ — served from `main` at the repo root, no
+   build step, verified rendering with the tables loading over https.
+
+**All planned phases are complete.** Remaining work is in the open questions of §4 (Jake's comp
+range, part-time tuition, the DHS infant differential, and unemployment-tax coverage) plus the
+known simplifications noted throughout — not in the build.

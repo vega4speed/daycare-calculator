@@ -1,5 +1,7 @@
 # Daycare Calculator
 
+**Live: https://vega4speed.github.io/daycare-calculator/**
+
 A month-by-month financial model for launching a childcare program — enrollment, licensing-driven
 staffing, revenue (private pay + state subsidy), expenses, and cash runway.
 
@@ -62,7 +64,7 @@ So an assumption that changes three times over five years takes three entries, n
 ## Running
 
 - **Tests:** `npm test` (runs `node --test` over `test/*.test.js`, nothing to install)
-- **App:** serve over http — ES modules and `fetch` do not work from a bare `file://` URL:
+- **App:** use the live link above, or serve locally over http — ES modules and `fetch` do not work from a bare `file://` URL:
   `python3 -m http.server 8000`, then open the printed URL. If the tables fail to load the page
   says so rather than rendering wrong numbers.
 

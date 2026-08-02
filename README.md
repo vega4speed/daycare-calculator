@@ -17,7 +17,7 @@ Assumptions can be set once and changed at any month — see "sticky overrides" 
 
 ## Status
 
-**Phases 0–5 complete — the app runs.** The override resolver, capacity/ratios, operating hours and schedules, revenue, expenses, the month loop with cash carry, roles/payroll/turnover, the solvers, and the browser UI. See `PLAN.md` for
+**Phases 0–7 complete — the app runs.** The override resolver, capacity/ratios, operating hours and schedules, revenue, expenses, the month loop with cash carry, roles/payroll/turnover, the solvers, the browser UI, and scenario comparison. See `PLAN.md` for
 the full design, the variable inventory, verified Tennessee figures, and the build order.
 
 ```
@@ -35,6 +35,7 @@ engine/solve.js          break-even enrollment, minimum capital, required tuitio
 index.html               the app
 ui/timeline-control.js   the sticky-override editor — a step function you can see and edit
 ui/projection-view.js    findings, chart, month table with a per-month breakdown
+ui/scenarios.js          save frozen named plans; compare 2-4 side by side
 ui/app.js                app shell; ui/state.js persistence; ui/project-adapter.js the one seam
 data/tn-childcare.json   verified TN licensing ratios + DHS reimbursement rates, cited
 test/                    node:test suites — 220 passing

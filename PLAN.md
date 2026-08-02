@@ -745,5 +745,8 @@ None of these block building — they're what the calculator is *for*.
    the §4.11/§4.12 conclusions in words above the fold, a cash+net chart, and a month table with a
    per-month breakdown incl. transitions narration. Export/Import/Reset, localStorage.
 7. **Phase 6** — solvers (break-even, minimum capital), transitions narration
-8. **Phase 7** — scenarios + comparison
+8. ~~**Phase 7** — scenarios + comparison~~ **DONE.** `ui/scenarios.js`. Save the current plan as a
+   named FROZEN copy, compare 2–4 side by side: a cash-balance chart (validated categorical
+   palette, colour assigned once per scenario at save time so it never repaints when the selection
+   changes), a headline table, and a "what differs" diff so you can see what you actually changed.
 9. **Phase 8** — enable GitHub Pages (repo + remote already set up during Phase 0)

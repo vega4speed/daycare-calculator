@@ -5,10 +5,12 @@ import { defaultState, loadState, saveState, clearState } from './state.js';
 import { loadTables, tables, projectFor } from './project-adapter.js';
 import { timelineControl } from './timeline-control.js';
 import { createProjectionView } from './projection-view.js';
+import { createScenarios } from './scenarios.js';
 
 let state = defaultState();
 let view = null;
 let inputsEl = null;
+let scenarios = null;
 
 const refresh = () => {
   saveState(state);
@@ -306,6 +308,7 @@ export async function mount(root) {
 
   const inputs = h('div', { class: 'inputs' });
   const output = h('div', { class: 'output' });
+  const scenarioPanel = h('section', { class: 'panel scenarios' });
   inputsEl = inputs;
 
   clear(root);
@@ -320,7 +323,7 @@ export async function mount(root) {
         'This page must be served over http — ES modules and fetch do not work from a file:// URL. ',
         'Try: python3 -m http.server 8000')
       : null,
-    h('div', { class: 'layout' }, inputs, output),
+    h('div', { class: 'layout' }, inputs, h('div', {}, output, scenarioPanel)),
     h('footer', {},
       h('p', { class: 'small muted' },
         'Licensing ratios: TN Rule 1240-04-01-.22 (Nov 2025). ',
@@ -333,6 +336,12 @@ export async function mount(root) {
   view = createProjectionView(output);
 
   if (loaded) {
+    scenarios = createScenarios(scenarioPanel, {
+      getState: () => state,
+      // Loading a scenario replaces the whole plan, so the inputs column must be rebuilt, not
+      // just refreshed — its rooms and roles editors are built from the state's shape.
+      setState: (next) => { state = next; rebuild(); },
+    });
     renderInputs();
     refresh();
   }

@@ -670,6 +670,49 @@ and putting the pair in front of whoever is funding this.
 
 ---
 
+## 4.14 Per-room coverage — a real staffing bug (2026-08-02)
+
+Jake-facing question that found it: *"why does the number of teachers go DOWN when the second
+classroom opens — are we firing someone?"*
+
+No, but the model deserved the suspicion. Staffing was derived FACILITY-WIDE per age group: pool
+every preschooler, divide by the ratio, fill the hours with leads and teachers. Three problems:
+
+**1. It understated staffing.** Ratios apply to a group in a room, not to a building. 26
+preschoolers pooled at 1:13 is 2 adults; split 24 and 2 across two rooms it is 2 + 1 = 3. At the
+default plan's month 4 the pooled figure was **90 adult-hours a week against a true 135** — a 50%
+understatement of classroom coverage, straight into payroll.
+
+**2. It looked like layoffs.** Counts were recomputed from scratch each month with leads pinned
+one-per-room, so opening a second classroom took leads 1 → 2 and teachers 2 → 1. Same three
+people; reported as a hire and a firing.
+
+**3. It could not answer "who covers which class."** There were no rooms in the answer, only a
+total — which is exactly the thing a reader cannot check, and therefore cannot trust.
+
+`engine/coverage.js` replaces it. Coverage is computed **per room** and expressed as **shifts**:
+each room's open hours are tiled by real people with real weekly hours, and every shift names its
+room.
+
+**Part-time staff, which the model previously could not express.** A room open 9 hours a day, 5
+days a week, needing 2 adults present is 90 adult-hours a week. Two 40-hour employees cover 80.
+The remaining 10 do not need a third full-time person — they need 10 hours of somebody. Rounding
+everyone up to full-time was charging a whole salary to cover a sliver. `allowPartTime` (default
+on) and `minShiftHours` (default 10, because nobody takes a two-hour-a-week job) control this.
+
+**Effect on the headline numbers**, with the full-time director of §4.13 also in place:
+
+| | |
+|---|---|
+| Cash required | $80,250 → **$74,217** |
+| Sustained profitability | month 8 (unchanged) |
+| Month 4 classroom coverage | 90 → **135 adult-hours/week** |
+
+Cash required went *down* despite staffing going *up*, because part-time shifts stopped rounding
+three separate remainders up to whole salaries. Those two errors had been partly cancelling.
+
+---
+
 ## 5. Engine layout
 
 ```
@@ -679,6 +722,7 @@ engine/
   enrollment.js     ramp + attrition + capacity clamp -> children per group per month
   revenue.js        tuition, DHS split, gap, collections, payment lag
   schedule.js       operating hours, day blocks, schedule types -> occupancy + staff-hours (§4.9)
+  coverage.js       per-ROOM coverage: adults required per time block, tiled by real shifts (§4.14)
   staffing.js       roles + seats: how many of each, at what wage, incl. the early-hire premium
   turnover.js       compa-ratio -> turnover rate -> departures + their four costs (§4.8)
   payroll.js        seats -> wages + employer taxes (FICA on; FUTA/SUTA off pending nonprofit

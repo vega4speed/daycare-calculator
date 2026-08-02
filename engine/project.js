@@ -28,6 +28,7 @@ import { staffingForDay } from './schedule.js';
 import { computeRevenue } from './revenue.js';
 import { computeExpenses, cumulativeEscalator } from './expenses.js';
 import { roleDemand, buildSeats, summarizeSeats } from './staffing.js';
+import { buildCoveragePlan, shiftsByRole } from './coverage.js';
 import { payrollForSeats, FICA_RATE } from './payroll.js';
 import { compaRatio, annualTurnoverRate, expectedDepartures, turnoverCosts } from './turnover.js';
 
@@ -186,11 +187,33 @@ export function project(plan) {
       peakAdults += s.peakAdults;
     }
 
+    // Per-ROOM coverage. Ratios apply to a group in a room, not to a building, so pooling an
+    // age group across rooms understates staffing (see coverage.js). This is also what makes
+    // "who covers which class" answerable at all.
+    const groupById = new Map(groups.map((g) => [g.id, g]));
+    const coverage = buildCoveragePlan({
+      rooms: openRooms(rooms, month),
+      childrenByRoom: allocation.byRoom,
+      enrolledByTypeFor: (room, children) =>
+        splitByScheduleMix(children, at(settings.scheduleMix, month, room.group, null), scheduleTypes),
+      fringeRuleFor: (room) => groupById.get(room.group)?.fringeRatioRule ?? null,
+      hours: { openHour, closeHour },
+      scheduleTypes,
+      ratios: tables.ratios,
+      daysOpen,
+      shiftOpts: {
+        fullTimeHours: at(settings.fullTimeHours, month, null, hoursPerFte),
+        allowPartTime: at(settings.allowPartTime, month, null, true),
+        minShiftHours: at(settings.minShiftHours, month, null, 10),
+      },
+    });
+
     pre.push({
       month,
       allocation,
       capacity,
       servedByGroup,
+      coverage,
       weeklyStaffHours,
       fte,
       peakAdults,
@@ -219,7 +242,7 @@ export function project(plan) {
   for (let i = 0; i < pre.length; i++) {
     const {
       month, allocation, capacity, servedByGroup, weeklyStaffHours, fte, peakAdults,
-      staffingByGroup, openRoomCount: roomsOpenNow, requirement,
+      staffingByGroup, openRoomCount: roomsOpenNow, requirement, coverage,
     } = pre[i];
     const monthsElapsed = month - months.from;
     const childrenServed = allocation.served;
@@ -293,11 +316,43 @@ export function project(plan) {
     let payrollDetail = null;
 
     if (payrollMode === 'roles') {
-      // One spec per role, each on its OWN lookahead horizon — a director hired months ahead and
-      // a floater hired in a fortnight are different questions and now get different answers.
+      // Classroom roles come from the COVERAGE PLAN: real shifts, per room, with their own
+      // hours. Floaters and the director are not classroom coverage, so they keep the
+      // policy-driven counts and their own hire-lead lookahead.
+      const leadRole = roles.find((r) => r.kind === 'lead');
+      const teacherRole = roles.find((r) => r.kind === 'teacher');
+
+      // Hire lead pulls the plan of a LATER month forward — staff in place before the children.
+      const planFor = (roleId) => {
+        const monthsAhead = leadDaysFor(roleId) / DAYS_PER_MONTH;
+        const full = Math.floor(monthsAhead);
+        const fraction = monthsAhead - full;
+        const here = pre[Math.min(i + full, pre.length - 1)].coverage;
+        const later = pre[Math.min(i + full + 1, pre.length - 1)].coverage;
+        return { here: shiftsByRole(here), later: shiftsByRole(later), fraction };
+      };
+
+      const classroomShifts = (role) => {
+        if (!role) return null;
+        const { here, later, fraction } = planFor(role.id);
+        const now = here[role.kind] ?? [];
+        const next = later[role.kind] ?? [];
+        const out = now.map((sh) => ({ ...sh, monthFraction: 1 }));
+        // Anything the later plan adds is brought forward for its share of this month.
+        if (fraction > 0 && next.length > now.length) {
+          for (const sh of next.slice(now.length)) out.push({ ...sh, monthFraction: fraction });
+        }
+        return { shifts: out };
+      };
+
       const byRole = {};
-      for (const role of roles) byRole[role.id] = specFor(role.id);
-      demand = { byRole, coverageHours: weeklyStaffHours, staffedCoverageHours, maxLeadDays };
+      if (leadRole) byRole[leadRole.id] = classroomShifts(leadRole);
+      if (teacherRole) byRole[teacherRole.id] = classroomShifts(teacherRole);
+      for (const role of roles) {
+        if (role.kind === 'lead' || role.kind === 'teacher') continue;
+        byRole[role.id] = specFor(role.id);
+      }
+      demand = { byRole, coverage, coverageHours: weeklyStaffHours, staffedCoverageHours, maxLeadDays };
 
       // The coverage buffer at this point drives the derived (fragility) premium. Seats are not
       // priced yet, so use the ratio requirement as the reference — the same measure §4.8 keys on.
@@ -464,6 +519,7 @@ export function project(plan) {
         ftePerPeakAdult: peakAdults > 0 ? fte / peakAdults : 0,
         buffer: coverageBuffer(Math.ceil(fte), requirement),
         demand,
+        coverage,
         seats: seatSummary,
         headcount: seatSummary?.headcount ?? null,
         maxLeadDays,

@@ -167,17 +167,42 @@ export function buildSeats({
     // the preceding month, and charging a full salary for it would overstate payroll by a third
     // of a wage in every month the plan grows.
     const spec = demand.byRole?.[role.id] ?? 0;
-    const count = typeof spec === 'number' ? spec : spec.count ?? 0;
-    const partial = typeof spec === 'number' ? 0 : spec.partial ?? 0;
-    const fraction = typeof spec === 'number' ? 0 : spec.fraction ?? 0;
+
+    // Three accepted shapes, in increasing order of fidelity:
+    //   number                      N full-time seats
+    //   {count, partial, fraction}  N seats plus one prorated by a sub-month hire lead
+    //   {shifts: [{hoursPerWeek, roomId, monthFraction?}]}  real shifts from coverage.js
+    // Shifts are the real model: they carry their OWN hours, so a room needing 10 hours of cover
+    // gets a 10-hour part-timer rather than a whole extra salary rounded up to fill it.
+    const defaultHours = hoursFor(role.id);
+    let shifts;
+    if (Array.isArray(spec?.shifts)) {
+      shifts = spec.shifts.map((s) => ({
+        hoursPerWeek: s.hoursPerWeek ?? defaultHours,
+        monthFraction: s.monthFraction ?? 1,
+        roomId: s.roomId ?? null,
+        roomLabel: s.roomLabel ?? null,
+        fullTime: s.fullTime ?? null,
+      }));
+    } else {
+      const count = typeof spec === 'number' ? spec : spec.count ?? 0;
+      const partial = typeof spec === 'number' ? 0 : spec.partial ?? 0;
+      const fraction = typeof spec === 'number' ? 0 : spec.fraction ?? 0;
+      shifts = [];
+      for (let i = 0; i < count + partial; i++) {
+        shifts.push({
+          hoursPerWeek: defaultHours,
+          monthFraction: i < count ? 1 : fraction,
+          roomId: null, roomLabel: null, fullTime: null,
+        });
+      }
+    }
 
     const baseWage = wageFor(role.id);
-    const hours = hoursFor(role.id);
 
-    for (let i = 0; i < count + partial; i++) {
-      const monthFraction = i < count ? 1 : fraction;
+    shifts.forEach((shift, i) => {
       const wage = seatWage(baseWage, i, { ...(premiums[role.id] ?? {}), bufferRatio });
-      const monthly = monthlyWage(wage, hours) * monthFraction;
+      const fullMonthly = monthlyWage(wage, shift.hoursPerWeek);
       seats.push({
         id: `${role.id}#${i}`,
         roleId: role.id,
@@ -186,15 +211,18 @@ export function buildSeats({
         baseWage,
         wage,
         premium: wage - baseWage,
-        hoursPerWeek: hours,
+        hoursPerWeek: shift.hoursPerWeek,
+        roomId: shift.roomId,
+        roomLabel: shift.roomLabel,
+        fullTime: shift.fullTime,
         // <1 for a seat brought forward by a sub-month hire lead.
-        monthFraction,
-        monthlyWages: monthly,
+        monthFraction: shift.monthFraction,
+        monthlyWages: fullMonthly * shift.monthFraction,
         // Annualized at the FULL rate: the wage-base caps in payroll.js are about what a person
         // earns in a year, not what this particular month cost.
-        annualWages: monthlyWage(wage, hours) * 12,
+        annualWages: fullMonthly * 12,
       });
-    }
+    });
   }
   return seats;
 }

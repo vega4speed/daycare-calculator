@@ -601,10 +601,12 @@ test('a sub-month lead PRORATES the seat instead of charging a whole salary', ()
 
 test('partial seats count fractionally in headcount', () => {
   const p = rolesPlan();
-  p.settings.hireLeadDays = { default: 15.21875 };
+  p.settings.hireLeadDays = { default: 15.21875 }; // half a month
   const m3 = project(p).rows.find((x) => x.month === 3);
-  const total = m3.staffing.seats.headcount;
-  assert.ok(!Number.isInteger(total), `${total} should be fractional — half a person for half a month`);
+  // Room 2 opens in month 4, so half a month of lead brings HALF of its lead forward into
+  // month 3. Assert on the role, not the total: totals can land on a whole number by
+  // coincidence when several fractional roles sum.
+  near(m3.staffing.seats.byRole.lead.count, 1.5, 0.01);
 });
 
 test('per-role leads are independent of one another', () => {

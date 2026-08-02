@@ -183,6 +183,71 @@ export function createProjectionView(container) {
    * zero while people are already being paid — which is the whole point of hire lead, and worth
    * seeing rather than puzzling over.
    */
+  /** Decimal hour -> "7:30am". */
+  const clock = (v) => {
+    const hh = Math.floor(v);
+    const mm = Math.round((v - hh) * 60);
+    const ampm = hh >= 12 ? 'pm' : 'am';
+    const h12 = hh % 12 === 0 ? 12 : hh % 12;
+    return `${h12}${mm ? ':' + String(mm).padStart(2, '0') : ''}${ampm}`;
+  };
+
+  /**
+   * Room-by-room: who is present, how many adults the ratio demands, and which shifts cover it.
+   *
+   * This is the answer to "who is covering which class". Without it the staffing figures are a
+   * total with no story, which is exactly the thing a reader cannot check or trust.
+   */
+  function coverageSection(row) {
+    const cov = row.staffing?.coverage;
+    if (!cov || cov.rooms.length === 0) return null;
+    const active = cov.rooms.filter((r) => r.weeklyAdultHours > 0);
+    if (active.length === 0) return null;
+
+    return h('div', { class: 'coverage' },
+      h('h4', {}, 'Who covers which room'),
+      active.map((room) => h('div', { class: 'room-cover' },
+        h('div', { class: 'room-cover-head' },
+          h('strong', {}, room.label),
+          h('span', { class: 'muted small' },
+            ` ${n0(room.children)} children · ratio 1:${room.childrenPerAdult} · ` +
+            `${room.weeklyAdultHours} adult-hours a week`)),
+
+        // Ratio through the day. The fringes need fewer adults than the middle, which is why
+        // a room's weekly hours are not simply peak-adults x opening hours.
+        h('table', { class: 'mini-table' },
+          h('thead', {}, h('tr', {},
+            h('th', {}, 'Time'), h('th', {}, 'Children'), h('th', {}, 'Adults required'))),
+          h('tbody', {}, room.blocks.filter((b) => b.children > 0).map((b) =>
+            h('tr', {},
+              h('td', {}, `${clock(b.start)}–${clock(b.end)}`),
+              h('td', {}, n0(b.children)),
+              h('td', {}, `${b.adults}${b.floorBinds ? ' *' : ''}`))))),
+
+        h('p', { class: 'small' },
+          'Covered by: ',
+          room.shifts.map((s, i) => [
+            i > 0 ? ' + ' : '',
+            h('span', { class: 'shift' },
+              `${s.role} ${s.hoursPerWeek} hrs/wk${s.fullTime ? '' : ' (part-time)'}`),
+          ]),
+          room.surplusHours > 0.5
+            ? h('span', { class: 'muted' }, ` — ${room.surplusHours} hrs spare`)
+            : null),
+      )),
+
+      cov.rooms.some((r) => r.blocks.some((b) => b.floorBinds))
+        ? h('p', { class: 'small muted' },
+          '* Two adults required because more than 12 children are on the premises, not because ' +
+          'of the ratio itself.')
+        : null,
+
+      h('p', { class: 'small muted' },
+        `Across all rooms: ${cov.totals.requiredHours} adult-hours a week required, ` +
+        `${cov.totals.suppliedHours} scheduled, over ${cov.totals.people} classroom ` +
+        `${cov.totals.people === 1 ? 'person' : 'people'}.`));
+  }
+
   function staffingSection(row) {
     const st = row.staffing;
     const seats = st.seats;
@@ -226,13 +291,13 @@ export function createProjectionView(container) {
 
       required > 0
         ? h('p', { class: 'small muted' },
-          `${people(classroomPeople)} classroom staff supply ${classroomHours.toFixed(0)} hours a week` +
+          `${people(classroomPeople)} classroom staff scheduled for ${classroomHours.toFixed(0)} hours a week` +
           (buffer > 0.5
-            ? ` — ${buffer.toFixed(0)} more than the ratio needs, which is your cover for breaks and absences.`
+            ? ` — ${buffer.toFixed(0)} above the ratio minimum. That slack is your only cover for breaks, absences, and lateness.`
             : buffer < -0.5
               ? ` — ${Math.abs(buffer).toFixed(0)} SHORT of the ratio requirement.`
-              : ', exactly the ratio requirement, with no cover for breaks or absences.') +
-          ' The director is not counted toward ratio.')
+              : ' — exactly the ratio minimum, leaving no cover for a break or a sick day.') +
+          ' The director is not counted toward ratio. See the room-by-room breakdown below.')
         : h('p', { class: 'small muted' },
           'Everyone above is being paid ahead of the children arriving — the director, plus any ' +
           'classroom staff pulled forward by their hire lead.'),
@@ -290,6 +355,8 @@ export function createProjectionView(container) {
               h('tr', {}, h('td', {}, 'Paid out'), h('td', {}, '−' + usdFull(row.expenses.total))),
               h('tr', { class: 'total' }, h('td', {}, 'Closing'), h('td', {}, usdFull(row.cash))),
               h('tr', {}, h('td', {}, 'Owed by DHS'), h('td', {}, usdFull(row.receivable)))))),
+
+          coverageSection(row),
 
           row.attrition?.rate > 0
             ? h('div', {},

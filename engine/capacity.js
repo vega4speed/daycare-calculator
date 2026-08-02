@@ -106,6 +106,34 @@ export function roomCapacity(room, ratios, opts = {}) {
   return { capacity, seats, maxGroupSize, limitedBy, rule };
 }
 
+/**
+ * Fill in each room's licensing rule from its age group where the room does not state one.
+ *
+ * A room has two group-ish fields and they answer different questions:
+ *   - `group`     which ENROLLMENT group the children belong to — it carries tuition, the DHS
+ *                 reimbursement band, and the enrollment target.
+ *   - `ratioRule` which LICENSING row governs this room's ratio and maximum group size.
+ *
+ * Usually the second follows from the first, and restating it on every room is just an
+ * opportunity to get them out of step. But they genuinely can differ: one enrollment group can
+ * occupy two rooms with different age mixes — a 3-year-old room at 1:9 and a 4–5 room at 1:16 —
+ * at the same tuition and the same DHS band. So `ratioRule` is OPTIONAL and inherited, rather
+ * than either mandatory (tedious) or removed (loses a real case).
+ */
+export function resolveRoomRules(rooms = [], groups = []) {
+  const byId = new Map(groups.map((g) => [g.id, g]));
+  return rooms.map((room) => {
+    if (room.ratioRule) return room;
+    const rule = byId.get(room.group)?.ratioRule;
+    if (!rule) {
+      throw new Error(
+        `Room "${room.id}" has no ratioRule and its group "${room.group}" does not supply one`,
+      );
+    }
+    return { ...room, ratioRule: rule, ratioRuleInherited: true };
+  });
+}
+
 /** Rooms open in a given month. A room with no `openMonth` never opens. */
 export function openRooms(rooms, month) {
   return rooms.filter((r) => r.openMonth != null && month >= r.openMonth);

@@ -10,6 +10,7 @@ import {
   allocate,
   staffingRequirement,
   coverageBuffer,
+  resolveRoomRules,
 } from '../engine/capacity.js';
 
 // The real verified tables — these tests double as a check that the data file still says what
@@ -314,4 +315,49 @@ test('the published charts really do lack a 3-6 grouping', () => {
   assert.ok(ids.includes('m_3_5yr'));
   assert.ok(ids.includes('m_4_6yr'));
   assert.ok(!ids.includes('m_3_6yr'));
+});
+
+// --- inherited licensing rules ---------------------------------------------------------------
+
+test('a room with no ratioRule inherits its age group\'s', () => {
+  const groups = [{ id: 'preschool', ratioRule: 'm_3_5yr' }, { id: 'toddler', ratioRule: 'm_2_3yr' }];
+  const rooms = [
+    { id: 'a', group: 'preschool', seats: 14, openMonth: 0 },
+    { id: 'b', group: 'toddler', seats: 12, openMonth: 0 },
+  ];
+  const resolved = resolveRoomRules(rooms, groups);
+  assert.equal(resolved[0].ratioRule, 'm_3_5yr');
+  assert.equal(resolved[0].ratioRuleInherited, true);
+  assert.equal(resolved[1].ratioRule, 'm_2_3yr');
+});
+
+test('a room that states its own rule keeps it', () => {
+  // The case inheritance must not destroy: one enrollment group, two rooms, different age mixes.
+  const groups = [{ id: 'preschool', ratioRule: 'm_3_5yr' }];
+  const rooms = [
+    { id: 'threes', group: 'preschool', ratioRule: 'age3', seats: 18, openMonth: 0 },
+    { id: 'fours', group: 'preschool', seats: 24, openMonth: 0 },
+  ];
+  const resolved = resolveRoomRules(rooms, groups);
+  assert.equal(resolved[0].ratioRule, 'age3');
+  assert.equal(resolved[0].ratioRuleInherited, undefined, 'not marked inherited');
+  assert.equal(resolved[1].ratioRule, 'm_3_5yr');
+
+  // And they really do staff differently at the same enrollment.
+  assert.equal(findRatioRule(ratios, resolved[0].ratioRule).childrenPerAdult, 9);
+  assert.equal(findRatioRule(ratios, resolved[1].ratioRule).childrenPerAdult, 13);
+});
+
+test('a custom inline rule survives inheritance untouched', () => {
+  const groups = [{ id: 'preschool', ratioRule: 'm_3_5yr' }];
+  const custom = { id: 'c', childrenPerAdult: 11, maxGroupSize: 20 };
+  const resolved = resolveRoomRules([{ id: 'r', group: 'preschool', ratioRule: custom }], groups);
+  assert.equal(resolved[0].ratioRule, custom);
+});
+
+test('a room whose group supplies no rule is refused, not defaulted', () => {
+  assert.throws(
+    () => resolveRoomRules([{ id: 'r', group: 'ghost' }], [{ id: 'preschool', ratioRule: 'm_3_5yr' }]),
+    /has no ratioRule and its group "ghost" does not supply one/,
+  );
 });

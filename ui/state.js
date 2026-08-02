@@ -22,9 +22,11 @@ export function defaultState() {
     startingCash: 25000,
 
     rooms: [
-      { id: 'ps-1', label: 'Preschool 1', group: 'preschool', ratioRule: 'm_3_5yr', seats: 14, openMonth: 0 },
-      { id: 'ps-2', label: 'Preschool 2', group: 'preschool', ratioRule: 'm_3_5yr', seats: 12, openMonth: 4 },
-      { id: 'tod-1', label: 'Toddler', group: 'toddler', ratioRule: 'm_2_3yr', seats: 12, openMonth: 8 },
+      // No ratioRule: each room inherits the licensing rule of its age group. State one only to
+      // override it (see engine/capacity.js resolveRoomRules).
+      { id: 'ps-1', label: 'Preschool 1', group: 'preschool', seats: 14, openMonth: 0 },
+      { id: 'ps-2', label: 'Preschool 2', group: 'preschool', seats: 12, openMonth: 4 },
+      { id: 'tod-1', label: 'Toddler', group: 'toddler', seats: 12, openMonth: 8 },
     ],
 
     groups: [

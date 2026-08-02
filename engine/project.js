@@ -23,7 +23,7 @@
 // reports `net` (accrual) and `cashFlow` (what actually moved) separately.
 
 import { resolve } from './resolver.js';
-import { allocate, licensedCapacity, staffingRequirement, coverageBuffer, findRatioRule, openRooms } from './capacity.js';
+import { allocate, licensedCapacity, staffingRequirement, coverageBuffer, findRatioRule, openRooms, resolveRoomRules } from './capacity.js';
 import { staffingForDay } from './schedule.js';
 import { computeRevenue } from './revenue.js';
 import { computeExpenses, cumulativeEscalator } from './expenses.js';
@@ -90,7 +90,7 @@ export function project(plan) {
   const {
     months,
     startingCash = 0,
-    rooms = [],
+    rooms: rawRooms = [],
     groups = [],
     roles = [],
     scheduleTypes = [],
@@ -98,6 +98,10 @@ export function project(plan) {
     tables = {},
     options = {},
   } = plan;
+
+  // A room may leave its licensing rule unstated and inherit it from its age group. Resolve that
+  // once, here, so every downstream module sees a room that names its own rule.
+  const rooms = resolveRoomRules(rawRooms, groups);
 
   const {
     dhsLagMonths = 0,

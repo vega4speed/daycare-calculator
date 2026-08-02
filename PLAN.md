@@ -99,6 +99,7 @@ Tagged: **[doc]** stated in the business plan · **[derive]** computed, not ente
 |---|---|---|
 | Age groups | [doc] | Toddler (2–3), Preschool (3–5); Infant deferred to a later phase but should exist in the model as a group you can turn on |
 | Rooms, and seats per room | [doc] | Y1: toddler room 12, preschool rooms 24 (2 rooms?) — **[decide]** is preschool 2 rooms of 12, or 1 of 24? Ratios and staffing depend on it |
+| Room age group vs licensing rule | [design, 2026-08-02] | Two different questions: `group` is which ENROLLMENT group the children belong to (tuition, DHS band, target); `ratioRule` is which licensing row governs the room. The second normally follows from the first, so it is OPTIONAL and inherited (`resolveRoomRules`). Stated only to override — one age group can occupy a 3-year-old room at 1:9 beside a 4–5 room at 1:16 |
 | Long-run capacity | [doc] | 6 rooms × 21 + 1 room × 12 = 138 |
 | Room-open schedule | [doc, phased] | Which month each room opens — a natural sticky-override setting |
 | Licensed child:staff ratio, per age group | [verify] | TN DHS ratios by age. I will not guess these; they drive every payroll number. Same treatment as `tax-tables.json` — a verified JSON with a `_meta` citation |

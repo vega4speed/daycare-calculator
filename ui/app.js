@@ -19,10 +19,20 @@ const refresh = () => {
   if (result) view.update(result, state);
 };
 
-/** Re-render the inputs column AND the projection. Used when the shape changes, not just a value. */
+/**
+ * Re-render the inputs column AND the projection. Used when the SHAPE changes (a room added, a
+ * field appearing or disappearing), not merely when a value does.
+ *
+ * Rebuilding empties and refills the column, which drops the page's scroll anchor and throws you
+ * back to the top — adding a room would scroll you away from the room you just added. Capture and
+ * restore around the whole operation, after the projection has re-rendered too, since that also
+ * replaces a large subtree.
+ */
 const rebuild = () => {
+  const y = window.scrollY;
   renderInputs();
   refresh();
+  window.scrollTo(0, y);
 };
 
 const setSetting = (key) => (next) => {
@@ -73,14 +83,16 @@ function roomCard(room, i) {
   const groupOptions = state.groups.map((g) => ({ id: g.id, label: g.label ?? g.id }));
   const isCustom = room.ratioRule && typeof room.ratioRule === 'object';
 
+  const group = state.groups.find((g) => g.id === room.group);
+  const inheritedId = group?.ratioRule;
+  const inheritedLabel = ratioOptions().find((o) => o.id === inheritedId)?.label ?? inheritedId;
+
   const setRule = (v) => {
-    if (v === '__custom') {
+    if (v === '__inherit') delete state.rooms[i].ratioRule;
+    else if (v === '__custom') {
       state.rooms[i].ratioRule = { id: 'custom', label: 'Custom', childrenPerAdult: 13, maxGroupSize: 24 };
-      rebuild();
-    } else {
-      state.rooms[i].ratioRule = v;
-      rebuild();
-    }
+    } else state.rooms[i].ratioRule = v;
+    rebuild();
   };
 
   return h('div', { class: 'card' },
@@ -100,8 +112,14 @@ function roomCard(room, i) {
           groupOptions.map((g) =>
             h('option', { value: g.id, selected: room.group === g.id }, g.label)))),
 
-      h('label', { class: 'wide' }, h('span', {}, 'Licensed grouping'),
+      h('label', { class: 'wide' },
+        h('span', {}, 'Licensed ratio',
+          !room.ratioRule
+            ? h('span', { class: 'tag tag-varies', title: 'Taken from this room’s age group. Most rooms want this.' }, 'inherited')
+            : null),
         h('select', { onchange: (e) => setRule(e.target.value) },
+          h('option', { value: '__inherit', selected: !room.ratioRule },
+            inheritedLabel ? `Same as age group · ${inheritedLabel}` : 'Same as age group'),
           ...ratioOptions().map((r) =>
             h('option', { value: r.id, selected: room.ratioRule === r.id }, r.label)),
           h('option', { value: '__custom', selected: isCustom }, 'Custom…'))),
@@ -158,9 +176,10 @@ function roomsEditor() {
     h('button', {
       class: 'small',
       onclick: () => {
+        // No ratioRule: inherit from the age group, which is what almost every room wants.
         state.rooms.push({
           id: `room-${Date.now()}`, label: 'New room', group: state.groups[0]?.id,
-          ratioRule: 'm_3_5yr', seats: 12, openMonth: 0,
+          seats: 12, openMonth: 0,
         });
         rebuild();
       },
@@ -191,7 +210,7 @@ function rolesEditor() {
   const setPerRole = (key, fallback) => (roleId, value) => {
     const setting = state.settings[key] ?? { default: fallback };
     state.settings[key] = { ...setting, byGroup: { ...(setting.byGroup ?? {}), [roleId]: value } };
-    rebuild();
+    refresh();
   };
 
   const setWage = setPerRole('wage', 18);
@@ -253,7 +272,12 @@ function renderInputs() {
       'Capacity is the smaller of physical seats and the licensed maximum group size.',
       roomsEditor(),
       h('p', { class: 'small muted', style: { marginTop: '8px' } },
-        'Groupings come from TN Rule 1240-04-01-.22, Charts 1 and 2 — the state’s own list, ' +
+        '“Age group” is which enrollment group the children belong to — it carries ' +
+        'their tuition, DHS reimbursement band, and enrollment target. “Licensed ratio” is ' +
+        'the rule governing this room’s staffing, and it normally follows from the age group, so ' +
+        'leave it inherited. Set it only when one age group occupies rooms with different age ' +
+        'mixes — a 3-year-old room at 1:9 beside a 4–5 room at 1:16. ' +
+        'Ratios come from TN Rule 1240-04-01-.22, Charts 1 and 2 — the state’s own list, ' +
         'not ours. It has a 3–5 and a 4–6 but no 3–6; Tennessee handles mixes it ' +
         'has not tabulated through its multi-age provision (ratio set by the age of the majority). ' +
         'Use Custom for those, and confirm the ratio with licensing.')),

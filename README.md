@@ -17,15 +17,16 @@ Assumptions can be set once and changed at any month — see "sticky overrides" 
 
 ## Status
 
-**Phases 0–1 complete.** The override resolver, and capacity/ratios/staffing. See `PLAN.md` for
+**Phases 0–1 complete, Phase 2 in progress.** The override resolver, capacity/ratios/staffing, and operating hours + enrollment schedules. See `PLAN.md` for
 the full design, the variable inventory, verified Tennessee figures, and the build order.
 
 ```
 PLAN.md                  design plan, variable inventory, open questions
 engine/resolver.js       the override resolver (month axis, sticky keys)
 engine/capacity.js       rooms, licensing ratios, and the staff they require
+engine/schedule.js       operating hours, day blocks, occupancy, staff-hours
 data/tn-childcare.json   verified TN licensing ratios + DHS reimbursement rates, cited
-test/                    node:test suites — 50 passing
+test/                    node:test suites — 73 passing
 ```
 
 ## Sticky overrides

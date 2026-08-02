@@ -126,7 +126,10 @@ Tagged: **[doc]** stated in the business plan · **[derive]** computed, not ente
 | DHS payment lag | [decide] | State reimbursement typically arrives weeks-to-a-month behind. Pure cash-flow item, invisible in P&L, potentially decisive for runway |
 | Collections loss / bad debt % | [decide] | On the family-paid portion |
 | Registration / supply fees | [decide] | One-time per enrollment — common revenue line, absent from the doc |
-| Part-time / drop-in enrollment | [decide] | Model at all in v1, or full-time only? |
+| Operating hours | **[Jake, undecided]** | Licensed 6am–6pm; actual hours TBD. §4.9 prices the choice |
+| Schedule types | **[Jake]** | Full day / half day AM / half day PM / part-week, each with arrive+depart hours, days/week, a tuition multiplier, and a DHS full-vs-part-time flag. §4.9 |
+| Schedule mix per group | [decide] | What share of each group is on each schedule — drives both revenue and seat sharing |
+| Part-time tuition multiplier | **[ask Jake]** | DHS pays exactly half (verified). Private-pay is normally 60–70%, not 50% — needs his pricing call. §4.9 |
 | Food program reimbursement (CACFP) | [decide] | A real revenue line for licensed centers; absent from the doc |
 
 ### 4.4 Staffing and payroll
@@ -361,6 +364,87 @@ mid / max per role would be much better than reverse-engineering a midpoint from
 
 ---
 
+## 4.9 Operating hours and enrollment schedules (2026-08-02)
+
+Licensed 6am–6pm; actual hours undecided. Broader hours widen the applicant pool but cost staff.
+Some children full day, some partial. Both questions turn out to share one mechanism.
+
+### Finding: ratio slots are not full-time employees
+
+The largest thing this section surfaces. `engine/capacity.js` answers "how many adults do N
+children require" — a ratio at a **moment**. That is not what payroll costs. You pay for adults
+present across the whole operating day, and one adult on the floor all day is more than one
+employee.
+
+| Operating day | Adults on the floor | Weekly staff-hours | **FTE at 40 hrs** |
+|---|---|---|---|
+| 9 hours (7:30–4:30) | 2 | 90 | **2.25** |
+| 10 hours (7–5) | 2 | 100 | **2.50** |
+| 12 hours (6–6, full license) | 2 | 120 | **3.00** |
+
+The business plan's phase table reads as headcount — "Phase 1: 12–14 students, 2 teachers." Two
+adults is the correct ratio answer for 14 children at 1:13. But **two 40-hour teachers cannot keep
+two adults on the floor for a nine-hour day.** It takes 2.25 people, and 3.0 across the full
+license. This compounds with §4.8's finding that the payroll figures also exclude employer payroll
+taxes — the two gaps are independent and both point the same direction.
+
+The gap is reported as `ftePerPeakAdult`, and it is the number to watch: at a 9-hour day it's
+1.125, at 12 hours it's 1.5.
+
+### What extended hours actually cost
+
+Not as much as the table above implies, because **ratio scales with children present**. Opening at
+6am costs nothing if no one comes at 6am — the cost arrives with the families who use the hours.
+So the honest model needs intra-day occupancy, which is what `engine/schedule.js` does: it cuts
+the day into blocks at every boundary where the set of children present changes, and evaluates
+ratio once per block.
+
+TN Rule 1240-04-01-.22(1)(c)3 supplies the block boundaries for free. Chart 3 permits combined
+grouping at a more permissive ratio (2½–5 years at 1:11 instead of 1:13) for "the first/last hour
+and one half of each day **only**" — which is precisely the state's accommodation for extended
+hours, and precisely where the fringe blocks fall.
+
+Concrete answer to Jake's question: with a handful of families using a 6am–6pm span, the fringe
+costs **one adult over two 1.5-hour windows, five days a week — 15 staff-hours, 0.375 FTE, about
+$1,170/mo at $18/hr.** `compareOperatingHours()` computes this for any pair of configurations. The
+cost side is exact; the benefit — how many more families apply — stays an assumption, because no
+model can tell you that.
+
+### Full day vs. partial day
+
+**Verified:** DHS prices part-time at exactly **half** the full-time rate, rounded up (it's in
+`data/tn-childcare.json`). Part-time preschool in Davidson County is $104/wk against $208.
+
+**Industry practice, not verified for this market:** private-pay part-time is normally priced
+*above* pro-rata — a half day typically runs 60–70% of full-day, not 50% — because a seat's cost
+isn't linear in hours. Staffing, rent, and insurance don't halve.
+
+**The asymmetry that creates is the thing to model.** DHS pays exactly half; costs don't halve.
+A half-day child present in the morning needs the same adults as a full-day child while they're
+there — there's a test pinning this (14 half-day children still require 2 adults). So **part-time
+DHS children are systematically less profitable than full-time ones**, and that should be visible
+per schedule type rather than buried in an average.
+
+**Where part-time earns its keep** is seat sharing: ratios bind on children *present*, so two
+complementary half-day children occupy one seat and enrollment can exceed physical capacity.
+`seatUtilization()` reports `enrolledPerSeat` and `seatFillRate` — but only complementary
+schedules tile. Two AM-only cohorts don't share a seat, they leave it empty every afternoon
+(`enrolledPerSeat` 1.0, `seatFillRate` 0.5). Both cases have tests, because "part-time lets you
+enroll more children" is true only under a condition that's easy to assume away.
+
+**Strategic note.** Jake's instinct to select for a narrower time range at first is well founded,
+and now quantifiable: a tight schedule band concentrates children into fewer blocks, which
+maximizes ratio efficiency and minimizes fringe coverage. The tradeoff is a smaller applicant
+pool. That's exactly the shape of question the calculator should answer — cost side exact,
+enrollment side an assumption you vary.
+
+**Known simplification:** part-week schedules (MWF vs T/Th) are averaged rather than laid out on a
+real weekly grid, so `peak` may overstate staffing when two part-week cohorts actually peak on
+different days. Overstating a licensing requirement is the safe direction to be wrong in; a real
+weekly grid is a later refinement.
+
+---
+
 ## 5. Engine layout
 
 ```
@@ -369,6 +453,7 @@ engine/
   capacity.js       rooms + ratios -> licensed capacity, staff required
   enrollment.js     ramp + attrition + capacity clamp -> children per group per month
   revenue.js        tuition, DHS split, gap, collections, payment lag
+  schedule.js       operating hours, day blocks, schedule types -> occupancy + staff-hours (§4.9)
   staffing.js       roles + seats: who is hired when, at what wage, incl. the early-hire premium
   turnover.js       compa-ratio -> turnover rate -> departures + their four costs (§4.8)
   payroll.js        seats -> wages + employer taxes (verified-figures JSON, _meta cited)

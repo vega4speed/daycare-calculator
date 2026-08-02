@@ -11,6 +11,13 @@ import { transitionsFor } from './project-adapter.js';
 
 const pct = (v) => (v == null ? '—' : `${(v * 100).toFixed(1)}%`);
 const n0 = (v) => Math.round(v ?? 0).toLocaleString();
+// Headcount can be fractional: a sub-month hire lead puts someone on payroll for part of a month,
+// and half a person for half a month is half a person in any figure you would divide by. Show one
+// decimal when it is not whole rather than dumping the raw float.
+const people = (v) => {
+  const n = v ?? 0;
+  return Number.isInteger(n) ? String(n) : n.toFixed(1);
+};
 
 export function createProjectionView(container) {
   let result = null;
@@ -185,10 +192,15 @@ export function createProjectionView(container) {
                 h('tbody', {}, Object.values(seats.byRole).map((r) =>
                   h('tr', {},
                     h('td', {}, r.roleId),
-                    h('td', {}, `${r.count}`),
+                    h('td', {}, people(r.count)),
                     h('td', {}, `$${r.averageWage.toFixed(2)}/hr`),
                     h('td', {}, usdFull(r.monthlyWages))))))
               : h('p', { class: 'muted small' }, 'No staff this month.'),
+            row.staffing.hiringAhead
+              ? h('p', { class: 'small' },
+                `Staffed ahead of enrollment — the longest hire lead here is ` +
+                `${Math.round(row.staffing.maxLeadDays)} days.`)
+              : null,
             h('p', { class: 'small muted' },
               `${row.staffing.peakAdults} adult(s) on the floor at peak · ` +
               `${row.staffing.fte.toFixed(2)} FTE to cover the day · ` +
@@ -255,7 +267,7 @@ export function createProjectionView(container) {
         h('td', { class: 'muted' }, monthLabel(open, row.month) ?? ''),
         h('td', {}, n0(row.enrollment.served) +
           (row.enrollment.unserved > 0 ? ` (+${n0(row.enrollment.unserved)})` : '')),
-        h('td', {}, row.staffing.seats ? String(row.staffing.seats.headcount) : '—'),
+        h('td', {}, row.staffing.seats ? people(row.staffing.seats.headcount) : '—'),
         h('td', {}, usdFull(row.revenue.revenue)),
         h('td', {}, usdFull(row.payroll.total)),
         h('td', {}, usdFull(row.expenses.total)),

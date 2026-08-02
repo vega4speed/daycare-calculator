@@ -278,3 +278,40 @@ test('coverageBuffer reports no ratio when nothing is required', () => {
   assert.equal(empty.bufferRatio, null, 'no division by zero');
   assert.equal(empty.outOfRatio, false);
 });
+
+// --- custom groupings -----------------------------------------------------------------------
+
+test('an inline ratio rule is used as-is, for groupings the state does not publish', () => {
+  // There is a published 3-5 (1:13) and a 4-6 (1:16), but no 3-6. TN handles that case through
+  // the multi-age provision (ratio by the age of the majority), not a table lookup -- so the
+  // model must let a caller state the ratio rather than force a grouping that misdescribes the
+  // room.
+  const rule = findRatioRule(ratios, { id: 'custom-3-6', label: '3-6 years', childrenPerAdult: 13, maxGroupSize: 24 });
+  assert.equal(rule.childrenPerAdult, 13);
+  assert.equal(rule.maxGroupSize, 24);
+  assert.equal(rule.custom, true);
+});
+
+test('a custom rule drives capacity and staffing like any published one', () => {
+  const rooms = [{
+    id: 'mixed', group: 'preschool', seats: 20, openMonth: 0,
+    ratioRule: { id: 'custom-3-6', childrenPerAdult: 13, maxGroupSize: 24 },
+  }];
+  const a = allocate({ preschool: 20 }, rooms, ratios, 0);
+  assert.equal(a.served, 20);
+  assert.equal(staffingRequirement(a, rooms, ratios).ratioRequired, 2, 'ceil(20/13)');
+});
+
+test('a custom rule without a usable ratio is refused, not defaulted', () => {
+  assert.throws(() => findRatioRule(ratios, { label: 'oops' }), /positive childrenPerAdult/);
+  assert.throws(() => findRatioRule(ratios, { childrenPerAdult: 0 }), /positive childrenPerAdult/);
+});
+
+test('the published charts really do lack a 3-6 grouping', () => {
+  // Pinning the fact behind the custom-rule escape hatch, so a future table update that adds one
+  // shows up here rather than silently leaving dead UI copy in place.
+  const ids = [...ratios.chart1_singleAge, ...ratios.chart2_multiAge].map((r) => r.id);
+  assert.ok(ids.includes('m_3_5yr'));
+  assert.ok(ids.includes('m_4_6yr'));
+  assert.ok(!ids.includes('m_3_6yr'));
+});

@@ -137,7 +137,7 @@ Tagged: **[doc]** stated in the business plan · **[derive]** computed, not ente
 | Variable | Source | Notes |
 |---|---|---|
 | Teachers required | [derive] | ceil per room from ratio + rooms open. The doc's phases (2 → 3 → 4 → 5 teachers) should fall out of this, not be typed in — that's the model earning its keep |
-| Hire lead time | [doc, risk] | "Hiring too early" is named as a top risk. Model as: staff hired N months before the enrollment that justifies them |
+| Hire lead time | [doc, risk] | "Hiring too early" is named as a top risk. **Per role, in DAYS** — a director is recruited months out, a floater in a fortnight. A lead under one month is PRORATED, not charged whole (2026-08-02) |
 | Manual staffing override | [decide] | You should be able to force a headcount in a month regardless of what the ratio says — sticky setting, same as everything else |
 | Wage per role | [Jake] | Hourly × hours/week. Lead $20–21, teacher $18, floater $17, director $26. See §4.8 |
 | Roles + headcount rules | [Jake] | Lead ≈1/classroom, teacher = ratio remainder, floater = a pool (the buffer lever), director ×1. §4.8 |

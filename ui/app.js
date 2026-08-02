@@ -1,7 +1,7 @@
 // app.js — the app shell: inputs on the left, projection on the right, localStorage in between.
 
 import { h, clear, append, download } from './dom.js';
-import { defaultState, loadState, saveState, clearState } from './state.js';
+import { defaultState, loadState, saveState, clearState, migrate } from './state.js';
 import { loadTables, tables, projectFor } from './project-adapter.js';
 import { timelineControl } from './timeline-control.js';
 import { createProjectionView } from './projection-view.js';
@@ -51,96 +51,160 @@ function numberInput(value, onChange, opts = {}) {
   });
 }
 
-function roomsEditor() {
-  const groupOptions = state.groups.map((g) => ({ id: g.id, label: g.label ?? g.id }));
-  const ratioOptions = [];
+function ratioOptions() {
   const t = tables();
+  const out = [];
   for (const chart of ['chart1_singleAge', 'chart2_multiAge']) {
     for (const r of t?.ratios?.[chart] ?? []) {
-      ratioOptions.push({ id: r.id, label: `${r.label} — 1:${r.childrenPerAdult}, max ${r.maxGroupSize ?? '∞'}` });
+      // Short labels: the full rule wording does not fit a 400px column, and the numbers are
+      // what you actually choose between.
+      const short = (r.label ?? r.id)
+        .replace(/\s*years?/gi, '').replace(/\s*months?/gi, 'mo')
+        .replace(/Six \(6\) weeks/i, '6wk')
+        .replace(/\((\d+)\)/g, '').replace(/\s+/g, ' ').trim();
+      out.push({ id: r.id, label: `${short} · 1:${r.childrenPerAdult}, max ${r.maxGroupSize ?? '—'}` });
     }
   }
+  return out;
+}
 
-  return h('table', { class: 'editor' },
-    h('thead', {}, h('tr', {},
-      h('th', {}, 'Room'), h('th', {}, 'Group'), h('th', {}, 'Licensing group'),
-      h('th', {}, 'Seats'), h('th', {}, 'Opens'), h('th', {}))),
-    h('tbody', {}, [
-      ...state.rooms.map((room, i) => h('tr', {},
-        h('td', {}, h('input', {
-          class: 'mini wide', value: room.label ?? room.id,
-          onchange: (e) => { state.rooms[i].label = e.target.value; refresh(); },
-        })),
-        h('td', {}, h('select', {
-          onchange: (e) => { state.rooms[i].group = e.target.value; refresh(); },
-        }, groupOptions.map((g) =>
-          h('option', { value: g.id, selected: room.group === g.id }, g.label)))),
-        h('td', {}, h('select', {
-          onchange: (e) => { state.rooms[i].ratioRule = e.target.value; refresh(); },
-        }, ratioOptions.map((r) =>
-          h('option', { value: r.id, selected: room.ratioRule === r.id }, r.label)))),
-        h('td', {}, h('input', {
-          type: 'number', class: 'mini', value: String(room.seats), step: '1',
+function roomCard(room, i) {
+  const groupOptions = state.groups.map((g) => ({ id: g.id, label: g.label ?? g.id }));
+  const isCustom = room.ratioRule && typeof room.ratioRule === 'object';
+
+  const setRule = (v) => {
+    if (v === '__custom') {
+      state.rooms[i].ratioRule = { id: 'custom', label: 'Custom', childrenPerAdult: 13, maxGroupSize: 24 };
+      rebuild();
+    } else {
+      state.rooms[i].ratioRule = v;
+      rebuild();
+    }
+  };
+
+  return h('div', { class: 'card' },
+    h('div', { class: 'card-head' },
+      h('input', {
+        class: 'card-title', value: room.label ?? room.id,
+        onchange: (e) => { state.rooms[i].label = e.target.value; refresh(); },
+      }),
+      h('button', {
+        class: 'link danger', title: 'Remove this room',
+        onclick: () => { state.rooms.splice(i, 1); rebuild(); },
+      }, '×')),
+
+    h('div', { class: 'card-fields' },
+      h('label', {}, h('span', {}, 'Age group'),
+        h('select', { onchange: (e) => { state.rooms[i].group = e.target.value; refresh(); } },
+          groupOptions.map((g) =>
+            h('option', { value: g.id, selected: room.group === g.id }, g.label)))),
+
+      h('label', { class: 'wide' }, h('span', {}, 'Licensed grouping'),
+        h('select', { onchange: (e) => setRule(e.target.value) },
+          ...ratioOptions().map((r) =>
+            h('option', { value: r.id, selected: room.ratioRule === r.id }, r.label)),
+          h('option', { value: '__custom', selected: isCustom }, 'Custom…'))),
+
+      isCustom
+        ? h('label', {}, h('span', {}, 'Ratio 1:'),
+          h('input', {
+            type: 'number', step: '1', min: '1', value: String(room.ratioRule.childrenPerAdult),
+            onchange: (e) => {
+              state.rooms[i].ratioRule = { ...room.ratioRule, childrenPerAdult: Number(e.target.value) };
+              refresh();
+            },
+          }))
+        : null,
+      isCustom
+        ? h('label', {}, h('span', {}, 'Max group'),
+          h('input', {
+            type: 'number', step: '1', min: '1', value: String(room.ratioRule.maxGroupSize ?? ''),
+            onchange: (e) => {
+              const v = e.target.value;
+              state.rooms[i].ratioRule = { ...room.ratioRule, maxGroupSize: v === '' ? null : Number(v) };
+              refresh();
+            },
+          }))
+        : null,
+
+      h('label', {}, h('span', {}, 'Seats'),
+        h('input', {
+          type: 'number', step: '1', min: '0', value: String(room.seats),
           onchange: (e) => { state.rooms[i].seats = Number(e.target.value); refresh(); },
         })),
-        h('td', {}, h('input', {
-          type: 'number', class: 'mini', value: String(room.openMonth ?? ''), step: '1',
+
+      h('label', {}, h('span', {}, 'Opens in month'),
+        h('input', {
+          type: 'number', step: '1', value: String(room.openMonth ?? ''), placeholder: 'never',
+          title: 'Month offset from opening: 0 is the opening month, -1 is the month before',
           onchange: (e) => {
             const v = e.target.value;
             state.rooms[i].openMonth = v === '' ? null : Number(v);
             refresh();
           },
-        })),
-        h('td', {}, h('button', {
-          class: 'link danger',
-          onclick: () => { state.rooms.splice(i, 1); rebuild(); },
-        }, '×')))),
-      h('tr', {}, h('td', { colSpan: 6 },
-        h('button', {
-          class: 'small',
-          onclick: () => {
-            state.rooms.push({
-              id: `room-${Date.now()}`, label: 'New room', group: state.groups[0]?.id,
-              ratioRule: 'm_3_5yr', seats: 12, openMonth: 0,
-            });
-            rebuild();
-          },
-        }, '+ Add room'))),
-    ]));
+        }))),
+
+    isCustom
+      ? h('p', { class: 'small warn-note' },
+        'A custom grouping is not one the state publishes — confirm the ratio with licensing ' +
+        'before relying on it.')
+      : null);
+}
+
+function roomsEditor() {
+  return h('div', {},
+    state.rooms.map((room, i) => roomCard(room, i)),
+    h('button', {
+      class: 'small',
+      onclick: () => {
+        state.rooms.push({
+          id: `room-${Date.now()}`, label: 'New room', group: state.groups[0]?.id,
+          ratioRule: 'm_3_5yr', seats: 12, openMonth: 0,
+        });
+        rebuild();
+      },
+    }, '+ Add room'));
 }
 
 function rolesEditor() {
-  return h('table', { class: 'editor' },
-    h('thead', {}, h('tr', {},
-      h('th', {}, 'Role'), h('th', {}, 'Wage/hr'), h('th', {}, 'Hours/wk'))),
-    h('tbody', {}, state.roles.map((role) => {
-      const wage = state.settings.wage;
-      const current = wage.byGroup?.[role.id] ?? wage.default;
-      const hours = state.settings.roleHours;
-      const currentHours = hours.byGroup?.[role.id] ?? hours.default;
-      return h('tr', {},
-        h('td', {}, role.label ?? role.id),
-        h('td', {}, h('input', {
-          type: 'number', class: 'mini', value: String(current), step: '0.25',
-          onchange: (e) => {
-            state.settings.wage = {
-              ...wage,
-              byGroup: { ...(wage.byGroup ?? {}), [role.id]: Number(e.target.value) },
-            };
-            refresh();
-          },
-        })),
-        h('td', {}, h('input', {
-          type: 'number', class: 'mini', value: String(currentHours), step: '1',
-          onchange: (e) => {
-            state.settings.roleHours = {
-              ...hours,
-              byGroup: { ...(hours.byGroup ?? {}), [role.id]: Number(e.target.value) },
-            };
-            refresh();
-          },
-        })));
-    })));
+  const perRole = (key, fallback) => (roleId) => {
+    const setting = state.settings[key] ?? { default: fallback };
+    return setting.byGroup?.[roleId] ?? setting.default ?? fallback;
+  };
+  const setPerRole = (key, fallback) => (roleId, value) => {
+    const setting = state.settings[key] ?? { default: fallback };
+    state.settings[key] = { ...setting, byGroup: { ...(setting.byGroup ?? {}), [roleId]: value } };
+    refresh();
+  };
+
+  const wageOf = perRole('wage', 18);
+  const hoursOf = perRole('roleHours', 40);
+  const leadOf = perRole('hireLeadDays', 0);
+  const setWage = setPerRole('wage', 18);
+  const setHours = setPerRole('roleHours', 40);
+  const setLead = setPerRole('hireLeadDays', 0);
+
+  return h('div', {}, state.roles.map((role) =>
+    h('div', { class: 'card' },
+      h('div', { class: 'card-head' }, h('strong', {}, role.label ?? role.id)),
+      h('div', { class: 'card-fields' },
+        h('label', {}, h('span', {}, 'Wage $/hr'),
+          h('input', {
+            type: 'number', step: '0.25', value: String(wageOf(role.id)),
+            onchange: (e) => setWage(role.id, Number(e.target.value)),
+          })),
+        h('label', {}, h('span', {}, 'Hours/week'),
+          h('input', {
+            type: 'number', step: '1', value: String(hoursOf(role.id)),
+            onchange: (e) => setHours(role.id, Number(e.target.value)),
+          })),
+        h('label', {}, h('span', {}, 'Hire lead (days)'),
+          h('input', {
+            type: 'number', step: '1', min: '0', value: String(Math.round(leadOf(role.id))),
+            title: 'How far ahead of the enrollment that justifies them this role is hired. '
+              + 'Under a month is prorated, not charged as a whole month.',
+            onchange: (e) => setLead(role.id, Number(e.target.value)),
+          }))))));
 }
 
 function renderInputs() {
@@ -163,8 +227,14 @@ function renderInputs() {
         numberInput(state.startingCash, (v) => { state.startingCash = v; refresh(); })),
     ),
 
-    section('Rooms', 'Capacity is the smaller of physical seats and the licensed maximum group size.',
-      roomsEditor()),
+    section('Rooms',
+      'Capacity is the smaller of physical seats and the licensed maximum group size.',
+      roomsEditor(),
+      h('p', { class: 'small muted', style: { marginTop: '8px' } },
+        'Groupings come from TN Rule 1240-04-01-.22, Charts 1 and 2 — the state’s own list, ' +
+        'not ours. It has a 3–5 and a 4–6 but no 3–6; Tennessee handles mixes it ' +
+        'has not tabulated through its multi-age provision (ratio set by the age of the majority). ' +
+        'Use Custom for those, and confirm the ratio with licensing.')),
 
     section('Enrollment', 'The number you expect to have. Capacity clamps it, but the shortfall is reported rather than hidden.',
       timelineControl({
@@ -223,10 +293,15 @@ function renderInputs() {
 
     section('Staffing', 'Headcount is derived from licensed ratios and the length of your operating day.',
       rolesEditor(),
+      h('p', { class: 'small muted', style: { margin: '4px 0 10px' } },
+        'Hire lead is per role because the questions differ — a director is recruited months ' +
+        'out, a floater in a fortnight. A lead under one month is prorated, not charged whole. ' +
+        'To change a lead over time, use the timeline below.'),
       timelineControl({
-        label: 'Hire lead time (months)', setting: state.settings.hireLeadMonths, months,
-        format: 'number', onChange: setSetting('hireLeadMonths'),
-        help: 'Staff hired ahead of the enrollment that justifies them.',
+        label: 'Hire lead, all roles (days)', setting: state.settings.hireLeadDays, months,
+        format: 'number', scopes: state.roles.map((r) => ({ id: r.id, label: r.label ?? r.id })),
+        onChange: setSetting('hireLeadDays'),
+        help: 'Sets every role at once, or pick one role under "Applies to".',
       }),
       field('Wage growth / yr',
         h('input', {
@@ -279,7 +354,7 @@ function renderInputs() {
               const file = input.files?.[0];
               if (!file) return;
               try {
-                state = { ...defaultState(), ...JSON.parse(await file.text()) };
+                state = migrate(JSON.parse(await file.text()));
                 rebuild();
               } catch {
                 alert('That file could not be read as a plan.');
@@ -298,7 +373,10 @@ function renderInputs() {
           },
         }, 'Reset')),
       h('p', { class: 'small muted' },
-        'Your plan lives in this browser only. Export to keep a copy or share it.'),
+        'Export writes the plan you are editing right now to a JSON file — for a backup, ' +
+        'another browser, or sending to someone. Scenarios are different: they are named copies ' +
+        'kept inside this browser so you can compare them side by side, and they never leave it. ' +
+        'Export is how a plan travels; scenarios are how you weigh two of them.'),
     ),
   );
 }

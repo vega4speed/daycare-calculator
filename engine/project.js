@@ -31,6 +31,9 @@ import { roleDemand, buildSeats, summarizeSeats } from './staffing.js';
 import { payrollForSeats, FICA_RATE } from './payroll.js';
 import { compaRatio, annualTurnoverRate, expectedDepartures, turnoverCosts } from './turnover.js';
 
+/** 365.25 / 12 — used to convert a hire lead expressed in days onto the monthly grid. */
+export const DAYS_PER_MONTH = 365.25 / 12;
+
 /** Resolve a setting for a month (and optionally a group), with a fallback. */
 const at = (setting, month, groupId, fallback = 0) => {
   const v = resolve(setting, { month, groupId });
@@ -217,9 +220,61 @@ export function project(plan) {
     const monthsElapsed = month - months.from;
     const childrenServed = allocation.served;
 
-    const hireLeadMonths = Math.max(0, at(settings.hireLeadMonths, month, null, 0));
-    const staffedCoverageHours = lookahead(i, 'weeklyStaffHours', hireLeadMonths);
-    const staffedRoomCount = lookahead(i, 'openRoomCount', hireLeadMonths);
+    /**
+     * Hire lead time, per role, in DAYS.
+     *
+     * Days rather than months because that is how hiring is actually planned — "post the job six
+     * weeks out" — and because roles differ: a director is recruited months ahead, a floater in
+     * a fortnight. Resolved per role (`byGroup` keyed on roleId) and per month, like everything
+     * else.
+     *
+     * A lead shorter than a month is a PARTIAL month of overlap, not a whole one. 20 days of
+     * lead means the incoming person is on payroll for about two thirds of the preceding month,
+     * so that seat is prorated rather than counted whole. Rounding a 20-day lead up to a full
+     * month would overstate payroll by a third of a salary in every month the plan grows.
+     */
+    const leadDaysFor = (roleId) => {
+      const days = at(settings.hireLeadDays, month, roleId, null);
+      if (days != null) return Math.max(0, days);
+      // Back-compat with plans saved before leads were expressed in days.
+      return Math.max(0, at(settings.hireLeadMonths, month, roleId, 0)) * DAYS_PER_MONTH;
+    };
+
+    const policy = {
+      leadsPerRoom: at(settings.leadsPerRoom, month, null, 1),
+      directorCount: at(settings.directorCount, month, null, 1),
+      floaterPolicy: at(settings.floaterPolicy, month, null, {}),
+    };
+
+    /** Whole-count demand for one role at a given whole-month lookahead. */
+    const demandAt = (roleId, monthsOut) =>
+      roleDemand({
+        coverageHours: lookahead(i, 'weeklyStaffHours', monthsOut),
+        openRoomCount: lookahead(i, 'openRoomCount', monthsOut),
+        roles,
+        policy,
+      }).byRole[roleId] ?? 0;
+
+    /**
+     * This role's staffing for this month: whole seats, plus any seats brought forward for only
+     * part of the month by a sub-month lead.
+     */
+    const specFor = (roleId) => {
+      const monthsAhead = leadDaysFor(roleId) / DAYS_PER_MONTH;
+      const full = Math.floor(monthsAhead);
+      const fraction = monthsAhead - full;
+      const count = demandAt(roleId, full);
+      if (fraction <= 0) return { count, partial: 0, fraction: 0 };
+      const next = demandAt(roleId, full + 1);
+      return { count, partial: Math.max(0, next - count), fraction };
+    };
+
+    // Reported for the row: the lead the longest-lead role is working to, and the coverage the
+    // whole team is staffed against, so "we are ahead of enrollment" stays visible.
+    const maxLeadDays = roles.length ? Math.max(...roles.map((r) => leadDaysFor(r.id))) : 0;
+    const staffedCoverageHours = lookahead(
+      i, 'weeklyStaffHours', Math.floor(maxLeadDays / DAYS_PER_MONTH),
+    );
 
     // --- payroll --------------------------------------------------------------------
     // Three modes, all producing the same row shape:
@@ -234,16 +289,11 @@ export function project(plan) {
     let payrollDetail = null;
 
     if (payrollMode === 'roles') {
-      demand = roleDemand({
-        coverageHours: staffedCoverageHours,
-        openRoomCount: staffedRoomCount,
-        roles,
-        policy: {
-          leadsPerRoom: at(settings.leadsPerRoom, month, null, 1),
-          directorCount: at(settings.directorCount, month, null, 1),
-          floaterPolicy: at(settings.floaterPolicy, month, null, {}),
-        },
-      });
+      // One spec per role, each on its OWN lookahead horizon — a director hired months ahead and
+      // a floater hired in a fortnight are different questions and now get different answers.
+      const byRole = {};
+      for (const role of roles) byRole[role.id] = specFor(role.id);
+      demand = { byRole, coverageHours: weeklyStaffHours, staffedCoverageHours, maxLeadDays };
 
       // The coverage buffer at this point drives the derived (fragility) premium. Seats are not
       // priced yet, so use the ratio requirement as the reference — the same measure §4.8 keys on.
@@ -412,7 +462,7 @@ export function project(plan) {
         demand,
         seats: seatSummary,
         headcount: seatSummary?.headcount ?? null,
-        hireLeadMonths,
+        maxLeadDays,
         // Coverage actually staffed for, which exceeds this month's own need when hiring ahead.
         staffedCoverageHours,
         hiringAhead: staffedCoverageHours > weeklyStaffHours,

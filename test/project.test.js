@@ -558,3 +558,93 @@ test('no attrition setting means no churn and no cost', () => {
   assert.equal(m.attrition.departuresExpected, 0);
   assert.equal(m.attrition.acquisitionCost, 0);
 });
+
+// --- hire lead in DAYS, per role -----------------------------------------------------------
+
+test('hire lead is expressed in days and resolves per role', () => {
+  const p = rolesPlan();
+  // Director recruited well ahead; floaters at short notice.
+  p.settings.hireLeadDays = { default: 0, byGroup: { lead: 61, teacher: 30, floater: 7 } };
+  const r = project(p);
+  assert.equal(r.rows.find((x) => x.month === 0).staffing.maxLeadDays, 61);
+});
+
+test('a whole-month lead brings the next month\'s seats forward at full cost', () => {
+  const p = rolesPlan();
+  p.settings.hireLeadDays = { default: 30.4375 }; // exactly one month
+  const r = project(p);
+  const m3 = r.rows.find((x) => x.month === 3);
+  // Room 2 opens in month 4, so month 3 must already carry its lead.
+  assert.equal(m3.staffing.seats.byRole.lead.count, 2);
+  assert.equal(m3.staffing.hiringAhead, true);
+});
+
+test('a sub-month lead PRORATES the seat instead of charging a whole salary', () => {
+  const none = project(rolesPlan());
+  const half = rolesPlan();
+  half.settings.hireLeadDays = { default: 15.21875 }; // half a month
+  const full = rolesPlan();
+  full.settings.hireLeadDays = { default: 30.4375 };
+
+  const m = (r) => r.rows.find((x) => x.month === 3);
+  const a = m(none);
+  const b = m(project(half));
+  const c = m(project(full));
+
+  // Month 3 has one room; month 4 opens a second. Half a month of lead should cost about half
+  // the extra staff, not all of it and not none of it.
+  assert.ok(b.payroll.grossWages > a.payroll.grossWages);
+  assert.ok(b.payroll.grossWages < c.payroll.grossWages);
+  const halfWay = (a.payroll.grossWages + c.payroll.grossWages) / 2;
+  near(b.payroll.grossWages, halfWay, 1, 'lands halfway between no lead and a full month');
+});
+
+test('partial seats count fractionally in headcount', () => {
+  const p = rolesPlan();
+  p.settings.hireLeadDays = { default: 15.21875 };
+  const m3 = project(p).rows.find((x) => x.month === 3);
+  const total = m3.staffing.seats.headcount;
+  assert.ok(!Number.isInteger(total), `${total} should be fractional — half a person for half a month`);
+});
+
+test('per-role leads are independent of one another', () => {
+  const onlyDirector = rolesPlan();
+  onlyDirector.settings.hireLeadDays = { default: 0, byGroup: { director: 61 } };
+  const onlyLead = rolesPlan();
+  onlyLead.settings.hireLeadDays = { default: 0, byGroup: { lead: 61 } };
+
+  const m3 = (p) => project(p).rows.find((x) => x.month === 3).staffing.seats.byRole;
+  // The director count never changes, so a director lead cannot move classroom staffing...
+  assert.equal(m3(onlyDirector).lead.count, 1);
+  // ...while a lead-teacher lead pulls room 2's lead into month 3.
+  assert.equal(m3(onlyLead).lead.count, 2);
+});
+
+test('a lead in days can be changed over time like any other setting', () => {
+  const p = rolesPlan();
+  p.settings.hireLeadDays = { default: 0, byMonth: { '3+': 61 } };
+  const r = project(p);
+  assert.equal(r.rows.find((x) => x.month === 2).staffing.maxLeadDays, 0);
+  assert.equal(r.rows.find((x) => x.month === 3).staffing.maxLeadDays, 61);
+});
+
+test('plans saved with hireLeadMonths still work', () => {
+  const old = rolesPlan();
+  old.settings.hireLeadMonths = { default: 1 };
+  const nu = rolesPlan();
+  nu.settings.hireLeadDays = { default: 30.4375 };
+
+  const a = project(old).rows.find((x) => x.month === 3);
+  const b = project(nu).rows.find((x) => x.month === 3);
+  near(a.payroll.grossWages, b.payroll.grossWages, 0.01);
+});
+
+test('zero lead everywhere matches no lead setting at all', () => {
+  const a = project(rolesPlan());
+  const p = rolesPlan();
+  p.settings.hireLeadDays = { default: 0 };
+  const b = project(p);
+  for (let i = 0; i < a.rows.length; i++) {
+    near(a.rows[i].payroll.total, b.rows[i].payroll.total, 0.01);
+  }
+});

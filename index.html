@@ -80,6 +80,16 @@
   .scopes { margin-bottom: 8px; }
   .strip { width: 100%; height: 48px; display: block; margin: 4px 0 8px; }
 
+  .card { border: 1px solid var(--grid); border-radius: 8px; padding: 10px; margin-bottom: 8px; background: #fff; }
+  .card-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 6px; }
+  .card-title { flex: 1; min-width: 0; font-weight: 600; border-color: transparent; padding: 3px 6px; }
+  .card-title:hover { border-color: var(--grid); }
+  .card-fields { display: flex; flex-wrap: wrap; gap: 8px; }
+  .card-fields label { flex: 1 1 96px; min-width: 88px; font-size: 12px; color: var(--ink2); }
+  .card-fields label.wide { flex: 1 1 100%; }
+  .card-fields label > span { display: block; margin-bottom: 2px; font-size: 11px; color: var(--muted); }
+  .card-fields input, .card-fields select { width: 100%; }
+
   .overrides, .editor, .mini-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
   .overrides th, .editor th { text-align: left; font-weight: 600; color: var(--muted); font-size: 11px; padding: 3px 4px; }
   .overrides td, .editor td, .mini-table td { padding: 3px 4px; border-top: 1px solid var(--grid); }

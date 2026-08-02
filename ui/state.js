@@ -76,7 +76,8 @@ export function defaultState() {
       leadsPerRoom: { default: 1 },
       directorCount: { default: 1 },
       floaterPolicy: { default: {}, byMonth: { '8+': { count: 1 } } },
-      hireLeadMonths: { default: 1 },
+      // Per role, in days. A director is recruited well ahead of a floater.
+      hireLeadDays: { default: 30, byGroup: { director: 60, lead: 45, floater: 14 } },
 
       perChildCost: { default: 120 },
       overheadBase: { default: 2181.82 },
@@ -105,12 +106,36 @@ export function loadState() {
   try {
     const raw = localStorage.getItem(KEY);
     if (!raw) return defaultState();
-    const parsed = JSON.parse(raw);
-    // Shallow-merge over defaults so a stored plan from an older version still opens.
-    return { ...defaultState(), ...parsed };
+    return migrate(JSON.parse(raw));
   } catch {
     return defaultState();
   }
+}
+
+/**
+ * Bring a stored plan up to the current shape.
+ *
+ * `settings` and `options` are merged KEY BY KEY, not replaced wholesale. A top-level spread
+ * alone means a plan saved before a setting existed keeps its old `settings` object entire, so
+ * the new setting is simply absent — and the UI control for it then reads `undefined.default`
+ * and takes the whole inputs column down with it. Found exactly that way when hire lead moved
+ * from months to days.
+ */
+export function migrate(stored) {
+  const base = defaultState();
+  return {
+    ...base,
+    ...stored,
+    meta: { ...base.meta, ...(stored.meta ?? {}) },
+    months: { ...base.months, ...(stored.months ?? {}) },
+    settings: { ...base.settings, ...(stored.settings ?? {}) },
+    options: {
+      ...base.options,
+      ...(stored.options ?? {}),
+      escalators: { ...base.options.escalators, ...(stored.options?.escalators ?? {}) },
+      rateOpts: { ...base.options.rateOpts, ...(stored.options?.rateOpts ?? {}) },
+    },
+  };
 }
 
 export function saveState(state) {

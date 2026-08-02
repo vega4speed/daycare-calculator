@@ -40,6 +40,25 @@ const staffFor = (children, childrenPerAdult) =>
  *          rule id silently resolving to a default would produce plausible-looking wrong staffing.
  */
 export function findRatioRule(ratios, ruleId) {
+  // An inline rule object is used as-is. The published charts do not cover every grouping a real
+  // program might run — there is a 3–5 and a 4–6 but no 3–6, for instance — and TN's own
+  // multi-age provision handles those by the age of the majority rather than by a table lookup.
+  // So a caller may supply the ratio directly rather than being forced into a grouping that
+  // does not describe their room. It is the caller's job to have confirmed it with licensing;
+  // this function only refuses to invent one.
+  if (ruleId && typeof ruleId === 'object') {
+    if (typeof ruleId.childrenPerAdult !== 'number' || ruleId.childrenPerAdult <= 0) {
+      throw new Error('A custom ratio rule needs a positive childrenPerAdult');
+    }
+    return {
+      id: ruleId.id ?? 'custom',
+      label: ruleId.label ?? 'Custom',
+      maxGroupSize: ruleId.maxGroupSize ?? null,
+      ...ruleId,
+      custom: true,
+    };
+  }
+
   for (const chart of ['chart1_singleAge', 'chart2_multiAge']) {
     const rows = ratios?.[chart];
     if (!Array.isArray(rows)) continue;

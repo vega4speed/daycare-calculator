@@ -41,7 +41,9 @@ export function timelineControl({
   // the panel you are working in), so the control must advance its own reference too. Rendering
   // from the original parameter instead is a silent no-op bug: every edit computes correctly,
   // reaches the engine, and then redraws the pre-edit state.
-  let current = setting;
+  // A missing setting resolves to a bare default rather than throwing. Settings get added over
+  // time and stored plans lag behind them; a control should degrade, not take the page down.
+  let current = setting ?? { default: 0 };
 
   const fmt = {
     money: { toStr: (v) => (v == null ? '' : String(v)), parse: (t) => (t.trim() === '' ? undefined : Number(t)), show: (v) => (v == null ? '—' : '$' + Number(v).toLocaleString(undefined, { maximumFractionDigits: 0 })) },

@@ -161,13 +161,23 @@ export function buildSeats({
 }) {
   const seats = [];
   for (const role of roles) {
-    const count = demand.byRole?.[role.id] ?? 0;
+    // A role's demand is either a plain count, or {count, partial, fraction} when a sub-month
+    // hire lead brings people on partway through the month. Those extra seats are PRORATED
+    // rather than counted whole: a 20-day lead puts someone on payroll for about two thirds of
+    // the preceding month, and charging a full salary for it would overstate payroll by a third
+    // of a wage in every month the plan grows.
+    const spec = demand.byRole?.[role.id] ?? 0;
+    const count = typeof spec === 'number' ? spec : spec.count ?? 0;
+    const partial = typeof spec === 'number' ? 0 : spec.partial ?? 0;
+    const fraction = typeof spec === 'number' ? 0 : spec.fraction ?? 0;
+
     const baseWage = wageFor(role.id);
     const hours = hoursFor(role.id);
 
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < count + partial; i++) {
+      const monthFraction = i < count ? 1 : fraction;
       const wage = seatWage(baseWage, i, { ...(premiums[role.id] ?? {}), bufferRatio });
-      const monthly = monthlyWage(wage, hours);
+      const monthly = monthlyWage(wage, hours) * monthFraction;
       seats.push({
         id: `${role.id}#${i}`,
         roleId: role.id,
@@ -177,8 +187,12 @@ export function buildSeats({
         wage,
         premium: wage - baseWage,
         hoursPerWeek: hours,
+        // <1 for a seat brought forward by a sub-month hire lead.
+        monthFraction,
         monthlyWages: monthly,
-        annualWages: monthly * 12,
+        // Annualized at the FULL rate: the wage-base caps in payroll.js are about what a person
+        // earns in a year, not what this particular month cost.
+        annualWages: monthlyWage(wage, hours) * 12,
       });
     }
   }
@@ -202,13 +216,15 @@ export function summarizeSeats(seats) {
       averageWage: 0,
       premiumPaid: 0,
     });
-    r.count += 1;
-    r.weeklyHours += s.hoursPerWeek;
+    // Partial seats count fractionally in headcount and hours — half a month of a person is
+    // half a person for any figure you would divide by.
+    r.count += s.monthFraction ?? 1;
+    r.weeklyHours += s.hoursPerWeek * (s.monthFraction ?? 1);
     r.monthlyWages += s.monthlyWages;
     r.premiumPaid += (s.premium * s.hoursPerWeek * 52) / 12;
 
-    headcount += 1;
-    weeklyHours += s.hoursPerWeek;
+    headcount += s.monthFraction ?? 1;
+    weeklyHours += s.hoursPerWeek * (s.monthFraction ?? 1);
     monthlyWages += s.monthlyWages;
   }
 

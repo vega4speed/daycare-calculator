@@ -445,6 +445,48 @@ weekly grid is a later refinement.
 
 ---
 
+## 4.10 Phase 2 results (2026-08-02)
+
+The month loop runs end to end. Two of the business plan's own revenue figures reproduce
+**exactly** from verified rates, which is a strong check that the model matches the plan's intent:
+
+- §7 blended at 36 children: 12 toddler × $1,250 + 24 preschool × $1,100 = **$41,400** ✓
+- §13 all-Pre-K at 36 children: 36 × $1,100 = **$39,600** ✓
+
+The cost lines reproduce too: supplies are cleanly $120/child/mo at both 14 and 36 children, and
+overhead fits a semi-fixed line of $2,182 base + $22.73/child through both of the plan's
+observations.
+
+### The accrual/cash split is bigger than it looks
+
+A one-month DHS lag at a 50% subsidy mix ties up a **$16,640 receivable** at full Year 1
+enrollment. That is not a one-month timing quirk that washes out — during a ramp the hole grows
+every time enrollment does, and it never comes back. It is invisible in a P&L and it is a direct
+claim on the cash the church must front. `receivable` is a running balance in every row for
+exactly this reason.
+
+### Known gap: payroll is ratio-required classroom staff only
+
+Phase 2 derives payroll from staff-hours, which correctly captures §4.9's operating-hours effect.
+But it has no concept of ROLES yet, so at 36 children it produces:
+
+| | Monthly |
+|---|---|
+| Phase 2 derived payroll (ratio-required classroom staff, 4.5 FTE) | $16,701 |
+| + full-time director (not yet modeled) | $4,851 |
+| + the 5th teacher the plan budgets above the ratio's 4 | $3,545 |
+| **= realistic payroll** | **$25,098** |
+| *plan's $22,000 gross, with employer tax added* | *$23,683* |
+
+So the model currently **understates payroll by roughly a third** at full enrollment, and any net
+income it reports before Phase 3 is optimistic. With the director and buffer added by hand, net at
+36 children is about **$7,400/mo against the plan's ~$11,000** — the gap being employer payroll
+taxes plus the staff-hours effect, the two findings from §4.8 and §4.9 compounding as expected.
+
+Phase 3 replaces the blended-wage derivation with real per-role seats and closes this.
+
+---
+
 ## 5. Engine layout
 
 ```
@@ -522,7 +564,10 @@ None of these block building — they're what the calculator is *for*.
    schedule, target allocation with a visible `unserved` surface, ratio-derived staffing including
    the second-adult floor, and `coverageBuffer` (the fragility measure §4.8's premium keys on).
    The doc's phase staffing reproduces: 14 children ⇒ 2 adults, 36 across 3 rooms ⇒ 4.
-3. **Phase 2** — revenue (tuition only, no DHS), expenses, net, cash. Reproduce Scenario A + B
+3. ~~**Phase 2** — revenue, expenses, net, cash. Reproduce Scenario A + B~~ **DONE**
+   (`engine/schedule.js`, `revenue.js`, `expenses.js`, `project.js`; 137 tests). Reproduces the
+   plan's $41,400 and $39,600 revenue figures exactly, and its supplies/overhead cost curves.
+   See §4.9 (hours) and §4.10 (results + the payroll gap Phase 3 closes).
 4. **Phase 3** — roles + seats, staffing derived from ratios, the early-hire premium, employer
    payroll taxes, hire lead time. Then turnover: compa-ratio → departures → the four costs (§4.8)
 5. **Phase 4** — DHS split, collections, payment lag

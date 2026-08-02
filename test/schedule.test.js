@@ -139,6 +139,44 @@ test('the more permissive fringe rule is applied only on the fringes', () => {
   assert.equal(staffed[1].rule, 'm_3_5yr');
 });
 
+test('Chart 3 is an allowance, so a STRICTER fringe rule is simply not used', () => {
+  // Chart 3's 2.5-5yr combined grouping is 1:11 -- stricter than a 3-5yr room's own 1:13.
+  // A provider would decline to combine and keep its own ratio. Applying the fringe rule
+  // unconditionally would invent a teacher the law does not require.
+  const hours = { openHour: 6, closeHour: 18 };
+  const allDay = { id: 'allDay', arriveHour: 6, departHour: 18, daysPerWeek: 5 };
+  const blocks = dayBlocks(hours, [allDay]);
+  const occ = occupancy({ allDay: 12 }, blocks, [allDay]);
+
+  const staffed = staffingByBlock(occ, (b) => (b.fringe ? [PRESCHOOL, FRINGE] : PRESCHOOL));
+  const fringeBlock = staffed.find((b) => b.fringe);
+
+  assert.equal(fringeBlock.adults, 1, 'ceil(12/13) under the core rule, not ceil(12/11)');
+  assert.equal(fringeBlock.rule, 'm_3_5yr', 'the core rule won because it needs fewer adults');
+});
+
+test('Chart 3 IS used when it genuinely helps', () => {
+  // A 2-3yr room is 1:8. Chart 3 lets 2.5-5 year olds combine at 1:11 on the fringes.
+  const TODDLER = findRatioRule(ratios, 'm_2_3yr'); // 1:8
+  const hours = { openHour: 6, closeHour: 18 };
+  const allDay = { id: 'allDay', arriveHour: 6, departHour: 18, daysPerWeek: 5 };
+  const blocks = dayBlocks(hours, [allDay]);
+  const occ = occupancy({ allDay: 11 }, blocks, [allDay]);
+
+  const staffed = staffingByBlock(occ, (b) => (b.fringe ? [TODDLER, FRINGE] : TODDLER));
+  assert.equal(staffed.find((b) => b.fringe).adults, 1, 'ceil(11/11) beats ceil(11/8)');
+  assert.equal(staffed.find((b) => b.fringe).rule, 'chart3_2h_5yr');
+  assert.equal(staffed.find((b) => !b.fringe).adults, 2, 'the core of the day still needs 2');
+});
+
+test('a block with no applicable rule throws rather than staffing nobody', () => {
+  const blocks = dayBlocks({ openHour: 8, closeHour: 17 }, []);
+  assert.throws(
+    () => staffingByBlock(occupancy({}, blocks, []), () => null),
+    /No ratio rule for block/,
+  );
+});
+
 test('the more-than-12 floor binds per block', () => {
   const hours = { openHour: 8, closeHour: 17 };
   const s = { id: 's', arriveHour: 8, departHour: 17, daysPerWeek: 5 };

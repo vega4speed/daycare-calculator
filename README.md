@@ -17,7 +17,7 @@ Assumptions can be set once and changed at any month — see "sticky overrides" 
 
 ## Status
 
-**Phases 0–1 complete, Phase 2 in progress.** The override resolver, capacity/ratios/staffing, and operating hours + enrollment schedules. See `PLAN.md` for
+**Phases 0–2 complete.** The override resolver, capacity/ratios/staffing, operating hours and schedules, revenue, expenses, and the month loop with cash carry. See `PLAN.md` for
 the full design, the variable inventory, verified Tennessee figures, and the build order.
 
 ```
@@ -25,8 +25,11 @@ PLAN.md                  design plan, variable inventory, open questions
 engine/resolver.js       the override resolver (month axis, sticky keys)
 engine/capacity.js       rooms, licensing ratios, and the staff they require
 engine/schedule.js       operating hours, day blocks, occupancy, staff-hours
+engine/revenue.js        tuition, DHS subsidy, the family gap, collections
+engine/expenses.js       per-child / semi-fixed / fixed cost lines and escalators
+engine/project.js        the month loop: cash carry, DHS payment lag, headline answers
 data/tn-childcare.json   verified TN licensing ratios + DHS reimbursement rates, cited
-test/                    node:test suites — 73 passing
+test/                    node:test suites — 137 passing
 ```
 
 ## Sticky overrides

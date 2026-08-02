@@ -132,8 +132,13 @@ export function occupancy(enrolledByType, blocks, scheduleTypes, { daysOpen = 5 
 /**
  * Adults required in each block, and the staff-hours that implies.
  *
- * `ruleFor(block)` supplies the ratio rule — callers pass the core rule, and the more permissive
- * Chart 3 rule for fringe blocks where combined grouping is allowed.
+ * `ruleFor(block)` supplies the ratio rule, or an ARRAY of rules the block may legally use.
+ *
+ * When several apply, the one requiring the fewest adults wins. Chart 3's combined grouping is an
+ * ALLOWANCE, not a requirement — a provider uses it only when it helps. This matters because
+ * Chart 3 is not uniformly more permissive: 2½–5 years at 1:11 is *stricter* than 3–5 years at
+ * 1:13, so a preschool room would simply decline to combine and keep its own ratio. Picking the
+ * fringe rule unconditionally would invent staff the law does not require.
  *
  * The facility floor from Rule .22(1)(b)2 (more than 12 children present ⇒ a second adult) is
  * applied per block, because it is a rule about children *present*, which is exactly what a
@@ -141,8 +146,12 @@ export function occupancy(enrolledByType, blocks, scheduleTypes, { daysOpen = 5 
  */
 export function staffingByBlock(occupied, ruleFor) {
   return occupied.map((block) => {
-    const rule = ruleFor(block);
-    const byRatio = block.peak <= 0 ? 0 : Math.ceil(block.peak / rule.childrenPerAdult);
+    const candidates = [ruleFor(block)].flat().filter(Boolean);
+    if (candidates.length === 0) throw new Error(`No ratio rule for block ${block.start}-${block.end}`);
+
+    const adultsUnder = (r) => (block.peak <= 0 ? 0 : Math.ceil(block.peak / r.childrenPerAdult));
+    const rule = candidates.reduce((best, r) => (adultsUnder(r) < adultsUnder(best) ? r : best));
+    const byRatio = adultsUnder(rule);
     const floor = block.peak > 12 ? 2 : block.peak > 0 ? 1 : 0;
     const adults = Math.max(byRatio, floor);
     return {
@@ -196,7 +205,8 @@ export function staffingForDay({
 }) {
   const blocks = dayBlocks(hours, scheduleTypes);
   const occupied = occupancy(enrolledByType, blocks, scheduleTypes, { daysOpen });
-  const ruleFor = (b) => (b.fringe && fringeRule ? fringeRule : coreRule);
+  // On the fringes BOTH rules are available; staffingByBlock takes whichever needs fewer adults.
+  const ruleFor = (b) => (b.fringe && fringeRule ? [coreRule, fringeRule] : coreRule);
   const staffed = staffingByBlock(occupied, ruleFor);
   return { blocks: staffed, ...weeklyStaffing(staffed, { daysOpen, hoursPerFte }) };
 }

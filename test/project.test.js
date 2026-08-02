@@ -326,3 +326,145 @@ test('a DHS-subsidized child still totals list tuition when the gap is charged',
   near(r.rows[0].revenue.revenue, 12 * 1100, 0.01);
   near(r.rows[0].revenue.fromDhs, 12 * monthlyFromWeekly(208), 0.01);
 });
+
+// --- Phase 3: roles, seats, and turnover ---------------------------------------------------
+
+const ROLES = [
+  { id: 'lead', kind: 'lead', hoursPerWeek: 40 },
+  { id: 'teacher', kind: 'teacher', hoursPerWeek: 40 },
+  { id: 'floater', kind: 'floater', hoursPerWeek: 40 },
+  { id: 'director', kind: 'director', hoursPerWeek: 40 },
+];
+
+const rolesPlan = (over = {}) => {
+  const p = basePlan({ options: { payrollMode: 'roles' }, ...over });
+  p.roles = ROLES;
+  p.settings.wage = { default: 18, byGroup: { lead: 20.5, floater: 17, director: 26 } };
+  p.settings.roleHours = { default: 40, byGroupMonth: { 'director|-2+': 20, 'director|8+': 40 } };
+  p.settings.enrollmentTarget = {
+    default: 0,
+    byGroupMonth: { 'preschool|0+': 12, 'preschool|4+': 24, 'toddler|8+': 12 },
+  };
+  return p;
+};
+
+test('roles mode staffs a director before the doors open', () => {
+  const r = project(rolesPlan());
+  const pre = r.rows.find((x) => x.month === -2);
+  assert.equal(pre.staffing.headcount, 1);
+  assert.equal(pre.staffing.seats.byRole.director.count, 1);
+  // Part-time at launch: $26 x 20 hrs.
+  near(pre.payroll.grossWages, (26 * 20 * 52) / 12, 0.01);
+});
+
+test('the director goes full-time on schedule via a sticky override', () => {
+  const r = project(rolesPlan());
+  const before = r.rows.find((x) => x.month === 7).staffing.seats.byRole.director;
+  const after = r.rows.find((x) => x.month === 8).staffing.seats.byRole.director;
+  assert.equal(before.weeklyHours, 20);
+  assert.equal(after.weeklyHours, 40);
+});
+
+test('classroom roles appear as rooms open and coverage grows', () => {
+  const r = project(rolesPlan());
+  const at = (m) => r.rows.find((x) => x.month === m).staffing.seats.byRole;
+
+  assert.equal(at(-1).lead, undefined, 'no classroom staff before opening');
+  assert.equal(at(0).lead.count, 1, 'one room open');
+  assert.equal(at(4).lead.count, 2, 'second room opens');
+  assert.equal(at(8).lead.count, 3, 'toddler room opens');
+});
+
+test('roles mode reports a real load factor above 1', () => {
+  const r = project(rolesPlan());
+  const m = r.rows.find((x) => x.month === 8);
+  near(m.payroll.loadFactor, 1.0765, 0.0001);
+  near(m.payroll.employerTax, m.payroll.grossWages * 0.0765, 0.01);
+  assert.equal(m.payroll.futa, 0, 'unemployment taxes default off -- a nonprofit question');
+  assert.equal(m.payroll.suta, 0);
+});
+
+test('roles mode costs more than the blended derivation, because it has a director', () => {
+  const roles = project(rolesPlan());
+  const blended = project(basePlan());
+  const m = (r) => r.rows.find((x) => x.month === 0).payroll.total;
+  assert.ok(m(roles) > m(blended),
+    'the Phase 2 derivation had no director, no floaters, and no buffer');
+});
+
+test('the early-hire premium raises only the first seats, and is reported', () => {
+  const withPremium = rolesPlan({
+    options: {
+      payrollMode: 'roles',
+      premiums: { teacher: { earlyHirePremium: { count: 2, amount: 1.5 } } },
+    },
+  });
+  const flat = rolesPlan();
+
+  const m = (p) => project(p).rows.find((x) => x.month === 8);
+  const a = m(withPremium);
+  const b = m(flat);
+
+  assert.ok(a.payroll.grossWages > b.payroll.grossWages);
+  assert.ok(a.staffing.seats.byRole.teacher.premiumPaid > 0);
+  assert.equal(b.staffing.seats.byRole.teacher.premiumPaid, 0);
+});
+
+test('floaters are added by policy and cost real money', () => {
+  const withFloaters = rolesPlan();
+  withFloaters.settings.floaterPolicy = { default: {}, byMonth: { '8+': { count: 1 } } };
+
+  const r = project(withFloaters);
+  assert.equal(r.rows.find((x) => x.month === 7).staffing.seats.byRole.floater, undefined);
+  assert.equal(r.rows.find((x) => x.month === 8).staffing.seats.byRole.floater.count, 1);
+});
+
+test('turnover is off unless configured', () => {
+  const r = project(rolesPlan());
+  assert.equal(r.rows.find((x) => x.month === 8).turnover, null);
+});
+
+test('turnover lands as an expense line and scales with comp position', () => {
+  const cfg = (midpoint) => rolesPlan({
+    options: {
+      payrollMode: 'roles',
+      turnover: {
+        default: {
+          midpoint, baseAtMid: 0.35, sensitivity: 1.5, floor: 0.1,
+          recruitingCost: 800, onboardingCost: 400,
+          vacancyWeeks: 4, coverageCostPerWeek: 700,
+          enrollmentLossProb: 0.3, childrenLostPerEvent: 1.5, monthsToRefill: 2,
+        },
+      },
+    },
+  });
+
+  // Paying at midpoint vs. paying above it (a lower midpoint = a higher compa-ratio).
+  const atMid = project(cfg(18)).rows.find((x) => x.month === 8);
+  const aboveMid = project(cfg(16)).rows.find((x) => x.month === 8);
+
+  assert.ok(atMid.turnover.totalCost > 0);
+  assert.ok(atMid.expenses.lines.turnover > 0, 'charged as its own expense line');
+  near(atMid.expenses.lines.turnover, atMid.turnover.totalCost, 0.01);
+
+  assert.ok(aboveMid.turnover.departures < atMid.turnover.departures,
+    'paying above midpoint reduces expected departures');
+  assert.ok(aboveMid.turnover.totalCost < atMid.turnover.totalCost);
+});
+
+test('turnover reports children lost, so the revenue effect stays visible', () => {
+  const p = rolesPlan({
+    options: {
+      payrollMode: 'roles',
+      turnover: {
+        default: {
+          midpoint: 18, baseAtMid: 0.4, sensitivity: 1.5, floor: 0.1,
+          enrollmentLossProb: 0.5, childrenLostPerEvent: 2, monthsToRefill: 3,
+        },
+      },
+    },
+  });
+  const m = project(p).rows.find((x) => x.month === 8);
+  assert.ok(m.turnover.childrenLost > 0);
+  assert.ok(m.turnover.byRole.teacher.revenueLost > 0);
+});

@@ -487,6 +487,85 @@ Phase 3 replaces the blended-wage derivation with real per-role seats and closes
 
 ---
 
+## 4.11 Phase 3 results (2026-08-02) — the launch does not break even
+
+With real roles, employer taxes, and turnover in place, the model contradicts the business plan's
+central claim about the launch phase. The plan says Phase 1 is "near break-even" with net income
+of $1,800–2,100/mo. The model says the launch phase **loses about $2,000/mo**, and on $25,000 of
+starting cash the program **goes cash-negative in month 2**.
+
+Three independent errors, all in the same direction, and together they account for the entire
+claimed profit:
+
+**1. Launch revenue assumes children the phasing doesn't allow.** The plan's $16,100 at 14
+children implies $1,150/child — a blended toddler ($1,250) and preschool ($1,100) rate. But the
+plan's own phasing is preschool-first: the toddler room doesn't open until Phase 3. At launch only
+preschool is open, so 14 children is **14 × $1,100 = $15,400**. The blended rate overstates launch
+revenue by about **$700/mo**.
+
+**2. Employer payroll taxes are missing** (§4.8). About **$680/mo** at launch.
+
+**3. Capacity constrains launch below the target anyway.** A single 12-seat room cannot hold the
+14 children the revenue figure assumes. Either the launch room needs 14 seats — legal, since max
+group size for 3–5 year olds is 24 — or launch revenue is a further ~$2,200/mo lower.
+
+Items 1 and 2 alone total roughly **$1,380/mo against a claimed $1,800–2,100**. Add scaled
+overhead, ongoing marketing, and turnover and the launch phase is underwater until the second
+classroom opens.
+
+**This is not a reason to abandon the plan.** The model shows it turning sustainably profitable in
+**month 4** when the second room opens, and reaching ~$3,600/mo net at full Year 1 enrollment.
+The plan's *strategy* — launch lean, prove demand, add rooms as enrollment supports them — holds
+up. What fails is the claim that the launch phase pays for itself. It needs to be funded through
+roughly four months of losses, and **the cash requirement is about $27,500, not the $2,200–4,000
+of startup costs the plan lists**.
+
+### What the model says at full Year 1 enrollment (month 12, 36 children)
+
+| Role | Count | Avg wage | Monthly |
+|---|---|---|---|
+| Lead teacher | 3 | $21.46 | $11,159 |
+| Teacher | 2 | $20.34 | $7,052 |
+| Floater | 1 | $17.80 | $3,085 |
+| Director | 1 | $27.22 | $4,718 |
+| **Gross wages** | | | **$26,014** |
+| Employer FICA | | | $1,990 |
+| **Total payroll** | | | **$28,004** |
+
+Against $40,905 revenue and $37,330 total expenses, that is **$3,575/mo net** — against the plan's
+~$11,000. Staffing is one person above the plan's five-teacher structure, because the model adds a
+floater the plan doesn't budget.
+
+### The comp/turnover finding: paying above midpoint cannot be justified on turnover savings
+
+`breakEvenSensitivity()` produced an algebraic surprise. Writing out the break-even condition,
+**both the raise size and the headcount cancel**:
+
+```
+costPerDeparture = (hours · 52 · load · midpoint) / (baseTurnover · sensitivity)
+```
+
+So whether an above-midpoint raise pays for itself does **not** depend on how big the raise is or
+how many people get it. A larger raise costs proportionally more *and* moves compa-ratio
+proportionally further.
+
+At Jake's numbers — $18 midpoint, 40 hours, 35% baseline turnover, and a generous sensitivity of
+1.5 — a single departure would have to cost **~$77,000** for the raise to break even. Typical
+direct replacement cost in this sector is nowhere near that, and the model's own turnover line at
+full enrollment is only ~$880/mo.
+
+**The honest conclusion: the case for paying over mid is not expected-value, it's fragility.** At
+lean staffing one departure can put the program out of ratio and force a room to close — a
+licensing event, not an incremental cost. That is a tail-risk argument, and it is exactly why the
+early-hire premium is keyed to the coverage buffer rather than applied flat. Jake's instinct is
+sound; the justification he'd give a board should be risk, not ROI.
+
+**Known choice:** the early-hire premium is a flat dollar differential and does not escalate with
+wage growth, so it erodes in real terms. Defensible (it's how a differential usually reads in an
+offer letter) but worth revisiting.
+
+---
+
 ## 5. Engine layout
 
 ```
@@ -496,9 +575,10 @@ engine/
   enrollment.js     ramp + attrition + capacity clamp -> children per group per month
   revenue.js        tuition, DHS split, gap, collections, payment lag
   schedule.js       operating hours, day blocks, schedule types -> occupancy + staff-hours (§4.9)
-  staffing.js       roles + seats: who is hired when, at what wage, incl. the early-hire premium
+  staffing.js       roles + seats: how many of each, at what wage, incl. the early-hire premium
   turnover.js       compa-ratio -> turnover rate -> departures + their four costs (§4.8)
-  payroll.js        seats -> wages + employer taxes (verified-figures JSON, _meta cited)
+  payroll.js        seats -> wages + employer taxes (FICA on; FUTA/SUTA off pending nonprofit
+                    status -- see the module header, it is a real legal question)
   expenses.js       per-child / fixed / escalated cost lines
   project.js        the month loop: ties it together, carries cash forward
   solve.js          break-even enrollment, minimum startup capital, first-profitable month,
@@ -568,8 +648,11 @@ None of these block building — they're what the calculator is *for*.
    (`engine/schedule.js`, `revenue.js`, `expenses.js`, `project.js`; 137 tests). Reproduces the
    plan's $41,400 and $39,600 revenue figures exactly, and its supplies/overhead cost curves.
    See §4.9 (hours) and §4.10 (results + the payroll gap Phase 3 closes).
-4. **Phase 3** — roles + seats, staffing derived from ratios, the early-hire premium, employer
-   payroll taxes, hire lead time. Then turnover: compa-ratio → departures → the four costs (§4.8)
+4. ~~**Phase 3** — roles + seats, the early-hire premium, employer payroll taxes, turnover~~
+   **DONE** (`engine/staffing.js`, `payroll.js`, `turnover.js`; 193 tests). See §4.11 — the launch
+   phase does not break even, and the comp-above-midpoint case is fragility, not ROI.
+   *Deferred from this phase:* hire lead time (hiring N months ahead of the enrollment that
+   justifies it) — the seats model supports it, but it needs a demand-lookahead pass.
 5. **Phase 4** — DHS split, collections, payment lag
 6. **Phase 5** — UI: accounts-editor analog (rooms/groups), setting controls, month table, chart
 7. **Phase 6** — solvers (break-even, minimum capital), transitions narration

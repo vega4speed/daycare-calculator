@@ -23,10 +23,13 @@
 // reports `net` (accrual) and `cashFlow` (what actually moved) separately.
 
 import { resolve } from './resolver.js';
-import { allocate, licensedCapacity, staffingRequirement, coverageBuffer, findRatioRule } from './capacity.js';
+import { allocate, licensedCapacity, staffingRequirement, coverageBuffer, findRatioRule, openRooms } from './capacity.js';
 import { staffingForDay } from './schedule.js';
 import { computeRevenue } from './revenue.js';
 import { computeExpenses, cumulativeEscalator } from './expenses.js';
+import { roleDemand, buildSeats, summarizeSeats } from './staffing.js';
+import { payrollForSeats, FICA_RATE } from './payroll.js';
+import { compaRatio, annualTurnoverRate, expectedDepartures, turnoverCosts } from './turnover.js';
 
 /** Resolve a setting for a month (and optionally a group), with a fallback. */
 const at = (setting, month, groupId, fallback = 0) => {
@@ -86,6 +89,7 @@ export function project(plan) {
     startingCash = 0,
     rooms = [],
     groups = [],
+    roles = [],
     scheduleTypes = [],
     settings = {},
     tables = {},
@@ -179,19 +183,64 @@ export function project(plan) {
     const requirement = staffingRequirement(allocation, rooms, tables.ratios);
 
     // --- payroll --------------------------------------------------------------------
-    // 'derived' turns staff-hours into dollars, so payroll automatically reflects operating
-    // hours and occupancy (PLAN.md §4.9). 'setting' takes a typed monthly figure instead.
-    // Phase 3 replaces both with real per-seat wages; the row shape does not change.
-    const wagePerHour = at(settings.wagePerHour, month, null, 0);
+    // Three modes, all producing the same row shape:
+    //   'roles'   real per-role seats with early-hire premiums — the Phase 3 model
+    //   'derived' staff-hours x one blended wage — no roles, no director, no buffer
+    //   'setting' a typed monthly figure
     const wageEscalator = cumulativeEscalator(escalators.wage ?? 0, monthsElapsed);
-    const grossWages =
-      payrollMode === 'derived'
-        ? (weeklyStaffHours * wagePerHour * wageEscalator * 52) / 12
-        : at(settings.payroll, month, null, 0) * wageEscalator;
+    const openRoomCount = openRooms(rooms, month).length;
 
-    // Employer payroll taxes, which the business plan's own figures exclude (PLAN.md §4.8).
-    const employerTax = grossWages * employerTaxRate;
-    const payroll = grossWages + employerTax;
+    let seats = [];
+    let seatSummary = null;
+    let demand = null;
+    let payrollDetail = null;
+
+    if (payrollMode === 'roles') {
+      demand = roleDemand({
+        coverageHours: weeklyStaffHours,
+        openRoomCount,
+        roles,
+        policy: {
+          leadsPerRoom: at(settings.leadsPerRoom, month, null, 1),
+          directorCount: at(settings.directorCount, month, null, 1),
+          floaterPolicy: at(settings.floaterPolicy, month, null, {}),
+        },
+      });
+
+      // The coverage buffer at this point drives the derived (fragility) premium. Seats are not
+      // priced yet, so use the ratio requirement as the reference — the same measure §4.8 keys on.
+      const preliminaryBuffer = coverageBuffer(Math.ceil(fte), requirement);
+
+      seats = buildSeats({
+        demand,
+        roles,
+        wageFor: (roleId) => at(settings.wage, month, roleId, 0) * wageEscalator,
+        hoursFor: (roleId) =>
+          at(settings.roleHours, month, roleId,
+            roles.find((r) => r.id === roleId)?.hoursPerWeek ?? 40),
+        premiums: options.premiums ?? {},
+        bufferRatio: preliminaryBuffer.bufferRatio,
+      });
+      seatSummary = summarizeSeats(seats);
+      payrollDetail = payrollForSeats(seats, options.taxes ?? { ficaRate: employerTaxRate });
+    } else {
+      const grossWages =
+        payrollMode === 'derived'
+          ? (weeklyStaffHours * at(settings.wagePerHour, month, null, 0) * wageEscalator * 52) / 12
+          : at(settings.payroll, month, null, 0) * wageEscalator;
+      const employerTax = grossWages * employerTaxRate;
+      payrollDetail = {
+        grossWages,
+        fica: employerTax,
+        futa: 0,
+        suta: 0,
+        employerTax,
+        total: grossWages + employerTax,
+        loadFactor: grossWages > 0 ? (grossWages + employerTax) / grossWages : 1,
+      };
+    }
+
+    const payroll = payrollDetail.total;
 
     // --- revenue --------------------------------------------------------------------
     const revenue = computeRevenue({
@@ -205,6 +254,47 @@ export function project(plan) {
       collectionsLoss: at(settings.collectionsLoss, month, null, 0),
       gapPolicy,
     });
+
+    // --- turnover -------------------------------------------------------------------
+    // Computed after revenue because the enrollment-loss cost needs revenue per child, and
+    // before expenses because it lands as an expense line.
+    //
+    // DOCUMENTED SIMPLIFICATION: lost enrollment is charged as a revenue-EQUIVALENT cost rather
+    // than fed back into next month's enrollment. A feedback loop would be more realistic and
+    // considerably harder to reason about, and the dollar effect is the same in the month it
+    // occurs. The children-lost figure is reported so the size of the effect stays visible.
+    let turnover = null;
+    if (options.turnover && seatSummary) {
+      const cfg = options.turnover;
+      const byRole = {};
+      let totalCost = 0;
+      let departures = 0;
+      let childrenLost = 0;
+
+      for (const role of roles) {
+        const summary = seatSummary.byRole[role.id];
+        if (!summary || summary.count === 0) continue;
+
+        const params = cfg.byRole?.[role.id] ?? cfg.default ?? {};
+        const ratio = compaRatio(summary.averageWage, params.midpoint);
+        const annual = annualTurnoverRate(params, ratio ?? 1);
+        const departed = expectedDepartures(summary.count, annual);
+
+        const costs = turnoverCosts({
+          ...params,
+          departures: departed,
+          weeklyWage: summary.averageWage * (summary.weeklyHours / summary.count),
+          revenuePerChild: revenue.revenuePerChild,
+        });
+
+        byRole[role.id] = { compaRatio: ratio, annualRate: annual, ...costs };
+        totalCost += costs.totalCost;
+        departures += departed;
+        childrenLost += costs.childrenLost;
+      }
+
+      turnover = { byRole, departures, childrenLost, totalCost };
+    }
 
     // --- expenses -------------------------------------------------------------------
     const expenses = computeExpenses({
@@ -221,6 +311,7 @@ export function project(plan) {
       oneTime: at(settings.oneTime, month, null, 0),
       payroll,
       escalators,
+      other: turnover ? { turnover: turnover.totalCost } : {},
     });
 
     // --- cash -----------------------------------------------------------------------
@@ -256,8 +347,12 @@ export function project(plan) {
         // The gap PLAN.md §4.9 is about: employees needed per adult on the floor.
         ftePerPeakAdult: peakAdults > 0 ? fte / peakAdults : 0,
         buffer: coverageBuffer(Math.ceil(fte), requirement),
+        demand,
+        seats: seatSummary,
+        headcount: seatSummary?.headcount ?? null,
       },
-      payroll: { grossWages, employerTax, total: payroll },
+      payroll: payrollDetail,
+      turnover,
       revenue,
       expenses,
       net,

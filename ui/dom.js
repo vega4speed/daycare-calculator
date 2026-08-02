@@ -1,6 +1,12 @@
 // dom.js — tiny dependency-free DOM helpers shared by the UI modules.
 
-/** h('div', {class:'x', onclick:fn}, child, child...) → HTMLElement */
+/**
+ * h('div', {class:'x', onclick:fn}, child, child...) → HTMLElement
+ *
+ * Children are flattened to ANY depth. A map that emits `[separator, element]` per item — the
+ * usual way to join a list with " + " between the pieces — nests two deep, and a single-level
+ * flatten would stringify the surviving inner arrays into "[object HTMLSpanElement]" on the page.
+ */
 export function h(tag, props = {}, ...children) {
   const el = document.createElement(tag);
   for (const [k, v] of Object.entries(props || {})) {
@@ -11,7 +17,7 @@ export function h(tag, props = {}, ...children) {
     else if (k in el && k !== 'list') el[k] = v;
     else el.setAttribute(k, v);
   }
-  for (const c of children.flat()) {
+  for (const c of children.flat(Infinity)) {
     if (c == null || c === false) continue;
     el.append(c.nodeType ? c : document.createTextNode(String(c)));
   }
@@ -28,7 +34,7 @@ export function s(tag, props = {}, ...children) {
     if (k.startsWith('on') && typeof v === 'function') el.addEventListener(k.slice(2).toLowerCase(), v);
     else el.setAttribute(k, v);
   }
-  for (const c of children.flat()) {
+  for (const c of children.flat(Infinity)) {
     if (c == null || c === false) continue;
     el.append(c.nodeType ? c : document.createTextNode(String(c)));
   }
@@ -41,7 +47,7 @@ export function s(tag, props = {}, ...children) {
  * "null" ends up rendered on the page from a `cond ? el : null` expression.
  */
 export function append(el, ...children) {
-  for (const c of children.flat()) {
+  for (const c of children.flat(Infinity)) {
     if (c == null || c === false) continue;
     el.append(c.nodeType ? c : document.createTextNode(String(c)));
   }

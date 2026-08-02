@@ -17,7 +17,7 @@ Assumptions can be set once and changed at any month — see "sticky overrides" 
 
 ## Status
 
-**Phases 0–4 complete.** The override resolver, capacity/ratios, operating hours and schedules, revenue, expenses, the month loop with cash carry, roles/payroll/turnover, and the solvers. See `PLAN.md` for
+**Phases 0–5 complete — the app runs.** The override resolver, capacity/ratios, operating hours and schedules, revenue, expenses, the month loop with cash carry, roles/payroll/turnover, the solvers, and the browser UI. See `PLAN.md` for
 the full design, the variable inventory, verified Tennessee figures, and the build order.
 
 ```
@@ -32,6 +32,10 @@ engine/payroll.js        wages -> total employer cost (FICA; FUTA/SUTA pending n
 engine/turnover.js       comp position -> turnover -> what it costs
 engine/project.js        the month loop: cash carry, DHS payment lag, headline answers
 engine/solve.js          break-even enrollment, minimum capital, required tuition, staffing grid
+index.html               the app
+ui/timeline-control.js   the sticky-override editor — a step function you can see and edit
+ui/projection-view.js    findings, chart, month table with a per-month breakdown
+ui/app.js                app shell; ui/state.js persistence; ui/project-adapter.js the one seam
 data/tn-childcare.json   verified TN licensing ratios + DHS reimbursement rates, cited
 test/                    node:test suites — 220 passing
 ```
@@ -57,7 +61,9 @@ So an assumption that changes three times over five years takes three entries, n
 ## Running
 
 - **Tests:** `npm test` (runs `node --test` over `test/*.test.js`, nothing to install)
-- **App:** not yet built — see `PLAN.md` §8
+- **App:** serve over http — ES modules and `fetch` do not work from a bare `file://` URL:
+  `python3 -m http.server 8000`, then open the printed URL. If the tables fail to load the page
+  says so rather than rendering wrong numbers.
 
 ## Data
 

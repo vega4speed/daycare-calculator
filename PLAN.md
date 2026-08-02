@@ -740,7 +740,10 @@ None of these block building — they're what the calculator is *for*.
    **hire lead time** deferred from Phase 3 and **attrition** from the variable inventory.
    220 tests. See §4.12 — the launch cannot break even at any enrollment, and the real cash
    requirement is ~$56k, not the $2,200–4,000 of startup costs the plan names.
-6. **Phase 5** — UI: accounts-editor analog (rooms/groups), setting controls, month table, chart
+6. ~~**Phase 5** — UI~~ **DONE.** `index.html` + `ui/`. Rooms and roles editors, the sticky-override
+   timeline control (a step chart you edit directly), headline tiles, a findings panel that states
+   the §4.11/§4.12 conclusions in words above the fold, a cash+net chart, and a month table with a
+   per-month breakdown incl. transitions narration. Export/Import/Reset, localStorage.
 7. **Phase 6** — solvers (break-even, minimum capital), transitions narration
 8. **Phase 7** — scenarios + comparison
 9. **Phase 8** — enable GitHub Pages (repo + remote already set up during Phase 0)

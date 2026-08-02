@@ -1,0 +1,150 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Childcare Program Calculator</title>
+<style>
+  :root {
+    --ink: #0b0b0b;
+    --ink2: #52514e;
+    --muted: #898781;
+    --grid: #e1e0d9;
+    --bg: #faf9f5;
+    --panel: #fff;
+    --accent: #2f6f4f;
+    --good: #0ca30c;
+    --bad: #d03b3b;
+    --warn: #c25b2e;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font: 15px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  header { padding: 28px 24px 8px; max-width: 1500px; margin: 0 auto; }
+  h1 { margin: 0; font-size: 24px; letter-spacing: -0.01em; }
+  .sub { margin: 4px 0 0; color: var(--ink2); }
+  footer { max-width: 1500px; margin: 32px auto; padding: 0 24px 40px; }
+
+  .layout {
+    display: grid; grid-template-columns: minmax(340px, 420px) 1fr; gap: 24px;
+    max-width: 1500px; margin: 0 auto; padding: 16px 24px; align-items: start;
+  }
+  @media (max-width: 1080px) { .layout { grid-template-columns: 1fr; } }
+
+  .panel {
+    background: var(--panel); border: 1px solid var(--grid); border-radius: 10px;
+    padding: 16px; margin-bottom: 16px;
+  }
+  .panel h2 { margin: 0 0 2px; font-size: 15px; letter-spacing: 0.01em; }
+  .panel-sub { margin: 0 0 12px; font-size: 12.5px; color: var(--muted); }
+
+  .field { display: block; margin: 10px 0; }
+  .field > span { display: block; font-size: 13px; color: var(--ink2); margin-bottom: 3px; }
+  .field small { display: block; margin-top: 3px; font-size: 11.5px; line-height: 1.35; }
+
+  input, select, button { font: inherit; color: inherit; }
+  input, select {
+    border: 1px solid var(--grid); border-radius: 6px; padding: 5px 8px; background: #fff;
+  }
+  input:focus, select:focus { outline: 2px solid var(--accent); outline-offset: -1px; }
+  .val { width: 100%; }
+  .mini { width: 72px; }
+  .mini.wide { width: 120px; }
+
+  button { border: 1px solid var(--grid); background: #fff; border-radius: 6px; padding: 5px 10px; cursor: pointer; }
+  button:hover { border-color: var(--ink2); }
+  button.link { border: none; background: none; color: var(--accent); padding: 2px 4px; }
+  button.link:hover { text-decoration: underline; }
+  button.small { font-size: 13px; }
+  button.danger, .danger { color: var(--bad); }
+
+  .row { display: flex; gap: 8px; flex-wrap: wrap; }
+  .muted { color: var(--muted); }
+  .small { font-size: 12.5px; }
+
+  /* --- settings --- */
+  .setting { border-top: 1px solid var(--grid); padding: 10px 0; }
+  .setting:first-of-type { border-top: none; }
+  .setting-head { display: flex; align-items: center; gap: 10px; justify-content: space-between; }
+  .setting-label { font-size: 13px; color: var(--ink2); display: flex; align-items: center; gap: 5px; }
+  .help {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 15px; height: 15px; border-radius: 50%; background: var(--grid);
+    font-size: 10px; cursor: help; color: var(--ink2);
+  }
+  .setting-value { display: flex; align-items: center; gap: 6px; }
+  .setting-value .val { width: 96px; }
+  .setting-body { margin-top: 10px; padding: 10px; background: var(--bg); border-radius: 8px; }
+  .scopes { margin-bottom: 8px; }
+  .strip { width: 100%; height: 48px; display: block; margin: 4px 0 8px; }
+
+  .overrides, .editor, .mini-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+  .overrides th, .editor th { text-align: left; font-weight: 600; color: var(--muted); font-size: 11px; padding: 3px 4px; }
+  .overrides td, .editor td, .mini-table td { padding: 3px 4px; border-top: 1px solid var(--grid); }
+  .tag { background: var(--grid); border-radius: 4px; padding: 1px 5px; font-size: 11px; }
+  .tag-spike { background: #f6e2d8; color: var(--warn); }
+  .add-override { display: flex; gap: 8px; align-items: end; flex-wrap: wrap; margin-top: 8px; }
+  .add-override label { font-size: 12px; color: var(--ink2); }
+
+  /* --- output --- */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 14px; }
+  .tile { background: var(--panel); border: 1px solid var(--grid); border-radius: 10px; padding: 12px; }
+  .tile-label { font-size: 11.5px; color: var(--muted); text-transform: uppercase; letter-spacing: 0.04em; }
+  .tile-value { font-size: 21px; font-weight: 600; margin-top: 2px; letter-spacing: -0.01em; }
+  .tile-note { font-size: 11.5px; color: var(--muted); margin-top: 1px; }
+  .tile-ok .tile-value { color: var(--good); }
+  .tile-bad .tile-value { color: var(--bad); }
+
+  .findings { display: grid; gap: 8px; margin-bottom: 16px; }
+  .finding { border-left: 3px solid var(--grid); background: var(--panel); border-radius: 0 8px 8px 0; padding: 10px 12px; }
+  .finding-bad { border-left-color: var(--bad); }
+  .finding-ok { border-left-color: var(--good); }
+  .finding-info { border-left-color: var(--accent); }
+  .finding-title { font-weight: 600; font-size: 14px; }
+  .finding-body { font-size: 13px; color: var(--ink2); margin-top: 2px; }
+
+  .chart { width: 100%; height: auto; background: var(--panel); border: 1px solid var(--grid); border-radius: 10px; }
+
+  .table-scroll { overflow: auto; max-height: 70vh; border: 1px solid var(--grid); border-radius: 10px; background: var(--panel); }
+  table.months { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.months th {
+    position: sticky; top: 0; background: var(--panel); z-index: 1;
+    text-align: right; font-size: 11px; color: var(--muted); text-transform: uppercase;
+    letter-spacing: 0.03em; padding: 8px 10px; border-bottom: 1px solid var(--grid);
+  }
+  table.months th:nth-child(-n+3) { text-align: left; }
+  table.months td { padding: 6px 10px; border-bottom: 1px solid var(--grid); text-align: right; white-space: nowrap; }
+  table.months td:nth-child(-n+3) { text-align: left; }
+  table.months tbody tr:not(.detail) { cursor: pointer; }
+  table.months tbody tr:not(.detail):hover { background: var(--bg); }
+  tr.preopen td { color: var(--muted); font-style: italic; }
+  td.neg { color: var(--bad); }
+  td.pos { color: var(--good); }
+  .toggle { color: var(--muted); width: 22px; }
+
+  .detail td { background: var(--bg); }
+  .detail-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 14px; padding: 6px 2px; text-align: left; }
+  .detail-grid h4 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
+  .detail-grid ul { margin: 0; padding-left: 16px; font-size: 12.5px; }
+  .mini-table td:last-child { text-align: right; }
+  .mini-table tr.total td { font-weight: 600; }
+  .t-good { color: var(--good); }
+  .t-warn { color: var(--warn); }
+  .t-bad { color: var(--bad); }
+
+  .warn-note { color: var(--warn); background: #fdf3ee; border-radius: 6px; padding: 6px 8px; margin: 6px 0; }
+
+  .banner { max-width: 1500px; margin: 8px auto; padding: 10px 14px; border-radius: 8px; font-size: 13.5px; }
+  .banner-bad { background: #fbe9e9; color: #8a2020; border: 1px solid #eebfbf; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script type="module">
+  import { mount } from './ui/app.js';
+  mount(document.getElementById('root'));
+</script>
+</body>
+</html>

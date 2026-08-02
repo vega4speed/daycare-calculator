@@ -749,4 +749,7 @@ None of these block building — they're what the calculator is *for*.
    named FROZEN copy, compare 2–4 side by side: a cash-balance chart (validated categorical
    palette, colour assigned once per scenario at save time so it never repaints when the selection
    changes), a headline table, and a "what differs" diff so you can see what you actually changed.
-9. **Phase 8** — enable GitHub Pages (repo + remote already set up during Phase 0)
+9. **Phase 8** — enable GitHub Pages. MANUAL STEP (no `gh` CLI on this machine):
+   Settings → Pages → Source: "Deploy from a branch" → Branch `main`, folder `/ (root)` → Save.
+   The site is entirely static with no build step, so it works as-is from the repo root; it will
+   appear at https://vega4speed.github.io/daycare-calculator/ within a minute or two.

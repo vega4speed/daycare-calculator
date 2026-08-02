@@ -17,14 +17,15 @@ Assumptions can be set once and changed at any month — see "sticky overrides" 
 
 ## Status
 
-**Phase 0 complete.** The override resolver and its test suite. See `PLAN.md` for the full
-design, the variable inventory, verified Tennessee figures, and the build order.
+**Phases 0–1 complete.** The override resolver, and capacity/ratios/staffing. See `PLAN.md` for
+the full design, the variable inventory, verified Tennessee figures, and the build order.
 
 ```
 PLAN.md                  design plan, variable inventory, open questions
 engine/resolver.js       the override resolver (month axis, sticky keys)
+engine/capacity.js       rooms, licensing ratios, and the staff they require
 data/tn-childcare.json   verified TN licensing ratios + DHS reimbursement rates, cited
-test/                    node:test suites — 25 passing
+test/                    node:test suites — 50 passing
 ```
 
 ## Sticky overrides

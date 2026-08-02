@@ -432,7 +432,11 @@ None of these block building — they're what the calculator is *for*.
 
 1. ~~**Phase 0** — repo skeleton, `resolver.js` with sticky month keys + its test suite~~ **DONE**
    (25 tests). Repo: `github.com/vega4speed/daycare-calculator`.
-2. **Phase 1** — capacity/ratios + enrollment ramp, pure, tested against the doc's phases
+2. ~~**Phase 1** — capacity/ratios, pure, tested against the doc's phases~~ **DONE**
+   (`engine/capacity.js`, 25 more tests). Rooms, the seats-vs-group-size distinction, the opening
+   schedule, target allocation with a visible `unserved` surface, ratio-derived staffing including
+   the second-adult floor, and `coverageBuffer` (the fragility measure §4.8's premium keys on).
+   The doc's phase staffing reproduces: 14 children ⇒ 2 adults, 36 across 3 rooms ⇒ 4.
 3. **Phase 2** — revenue (tuition only, no DHS), expenses, net, cash. Reproduce Scenario A + B
 4. **Phase 3** — roles + seats, staffing derived from ratios, the early-hire premium, employer
    payroll taxes, hire lead time. Then turnover: compa-ratio → departures → the four costs (§4.8)

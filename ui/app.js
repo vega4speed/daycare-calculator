@@ -4,7 +4,7 @@ import { h, clear, append, download } from './dom.js';
 import { defaultState, loadState, saveState, clearState, migrate } from './state.js';
 import { loadTables, tables, projectFor } from './project-adapter.js';
 import { timelineControl } from './timeline-control.js';
-import { resolve as resolveSetting } from '../engine/resolver.js';
+import { resolve as resolveSetting, timeline as settingTimeline } from '../engine/resolver.js';
 import { createProjectionView } from './projection-view.js';
 import { createScenarios } from './scenarios.js';
 
@@ -187,6 +187,26 @@ function roomsEditor() {
 }
 
 /**
+ * Describe a setting's schedule in words: "20 from month -2, then 40 from month 8".
+ *
+ * A chip saying "by month" tells you THAT something varies without telling you what, which just
+ * moves the question rather than answering it. Resolving every month and compressing equal runs
+ * gives the actual schedule in one line, which is what a reader wanted in the first place.
+ */
+function scheduleSummary(setting, roleId, months, unit = '') {
+  const points = settingTimeline(setting, months.from, months.to, { groupId: roleId });
+  const runs = [];
+  for (const p of points) {
+    const last = runs[runs.length - 1];
+    if (!last || last.value !== p.value) runs.push({ value: p.value, from: p.month });
+  }
+  if (runs.length <= 1) return null;
+  return runs
+    .map((r, i) => `${r.value}${unit} from month ${r.from}${i === 0 ? '' : ''}`)
+    .join(', then ');
+}
+
+/**
  * Does a month-scoped override outrank the role-level value for this setting?
  *
  * The resolver goes most-specific-first, so byGroupMonth and byMonth both beat byGroup. A card
@@ -217,34 +237,45 @@ function rolesEditor() {
   const setHours = setPerRole('roleHours', 40);
   const setLead = setPerRole('hireLeadDays', 0);
 
-  const cell = (label, key, roleId, fallback, onChange, opts = {}) => {
-    const varies = overriddenByMonth(state.settings[key], roleId);
+  // Notes go BELOW the field row, spanning the card, rather than inside a field. A field wide
+  // enough to hold a sentence forces its row to wrap and leaves its siblings stretched across
+  // the card on their own, which looks broken.
+  const cell = (notes) => (label, key, roleId, fallback, onChange, opts = {}) => {
+    const setting = state.settings[key];
+    const varies = overriddenByMonth(setting, roleId);
+    if (varies) {
+      const schedule = scheduleSummary(setting, roleId, state.months, opts.unit ?? '');
+      if (schedule) notes.push(`${label}: ${schedule}. Edit on the timeline below.`);
+    }
     return h('label', {},
-      h('span', {},
-        label,
-        varies ? h('span', { class: 'tag tag-varies', title: 'A month-specific change overrides this — edit it on the timeline below.' }, 'by month') : null),
+      h('span', {}, label),
       h('input', {
         type: 'number', step: opts.step ?? '1', min: opts.min,
         value: String(shownValue(key, roleId, fallback)),
         disabled: varies,
         title: varies
-          ? 'This role changes over time. Edit it on the timeline below instead.'
+          ? 'This changes over time — edit it on the timeline below.'
           : opts.title,
         onchange: (e) => onChange(roleId, Number(e.target.value)),
       }));
   };
 
-  return h('div', {}, state.roles.map((role) =>
-    h('div', { class: 'card' },
+  return h('div', {}, state.roles.map((role) => {
+    const notes = [];
+    const c = cell(notes);
+    const fields = h('div', { class: 'card-fields' },
+      c('Wage $/hr', 'wage', role.id, 18, setWage, { step: '0.25' }),
+      c('Hours/week', 'roleHours', role.id, 40, setHours, { unit: ' hrs' }),
+      c('Hire lead (days)', 'hireLeadDays', role.id, 0, setLead, {
+        min: '0', unit: ' days',
+        title: 'How far ahead of the enrollment that justifies them this role is hired. '
+          + 'Under a month is prorated, not charged as a whole month.',
+      }));
+    return h('div', { class: 'card' },
       h('div', { class: 'card-head' }, h('strong', {}, role.label ?? role.id)),
-      h('div', { class: 'card-fields' },
-        cell('Wage $/hr', 'wage', role.id, 18, setWage, { step: '0.25' }),
-        cell('Hours/week', 'roleHours', role.id, 40, setHours),
-        cell('Hire lead (days)', 'hireLeadDays', role.id, 0, setLead, {
-          min: '0',
-          title: 'How far ahead of the enrollment that justifies them this role is hired. '
-            + 'Under a month is prorated, not charged as a whole month.',
-        })))));
+      fields,
+      notes.map((n) => h('p', { class: 'schedule' }, n)));
+  }));
 }
 
 function renderInputs() {

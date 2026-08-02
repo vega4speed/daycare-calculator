@@ -74,7 +74,10 @@ export function defaultState() {
       hoursClose: { default: 17.5 },
 
       wage: { default: 18, byGroup: { lead: 20.5, floater: 17, director: 26 } },
-      roleHours: { default: 40, byGroupMonth: { 'director|-2+': 20, 'director|8+': 40 } },
+      // Director is full-time from the start (Jake, 2026-08-02). The business plan document had
+      // them part-time until Phase 4; that was reconsidered. To go back to a part-time launch,
+      // set Hours per week on the timeline with "Applies to: Director".
+      roleHours: { default: 40 },
       leadsPerRoom: { default: 1 },
       directorCount: { default: 1 },
       floaterPolicy: { default: {}, byMonth: { '8+': { count: 1 } } },

@@ -146,7 +146,7 @@ Tagged: **[doc]** stated in the business plan · **[derive]** computed, not ente
 | Market comp range per role | **[ask Jake]** | min/mid/max, to compute compa-ratio. He has researched this |
 | Turnover ↔ compa-ratio | [decide, §4.8] | User-adjustable relationship. An explicit assumption, not an empirical constant |
 | Turnover cost | [decide, §4.8] | Vacancy coverage (mandatory — ratios are law), recruiting, ramp, and enrollment loss |
-| Director: PT → FT | [doc] | Phase 4. A sticky override on director hours |
+| Director: PT → FT | [doc, SUPERSEDED] | The plan document had the director part-time until Phase 4. **Reconsidered 2026-08-02 (Jake): full-time from the start.** The default plan now reflects that — it costs +$2,442/mo and pushes sustained profitability from month 4 to month 8 (§4.13). Still expressible either way via Hours per week on the timeline |
 | Employer payroll tax burden | **[resolved, §4.8]** | The doc's payroll figures are gross wages, excluding employer FICA/FUTA/SUTA — confirmed by reconciling Jake's rates against both ends of the ramp. Computed explicitly in `engine/payroll.js` |
 | Benefits / paid time off | [decide] | Absent from the doc. Substitutes are handled via the floater pool + vacancy coverage |
 | Wage growth escalator | [decide] | The doc itself names low wages as a sector-wide staffing problem |
@@ -645,6 +645,28 @@ plan's own "hiring too early" risk made explicit rather than assumed away.
 flows landed a hair below zero. Now tolerant to half a cent. Found by a solver asserting its own
 answer was sufficient — the kind of bug that only shows up when two parts of a system check each
 other.
+
+---
+
+## 4.13 Full-time director from the start (2026-08-02)
+
+The business plan has the director part-time at launch, going full-time by Phase 4. That was
+reconsidered — the director is full-time from the beginning. The default plan now reflects it,
+and the cost is not small:
+
+| | Part-time until month 8 | **Full-time throughout** |
+|---|---|---|
+| Payroll, month 0 | $13,053 | **$15,495** (+$2,442/mo) |
+| Cash required | $63,102 | **$80,250** |
+| Deepest cash point | −$28,102 (month 4) | **−$45,250** (month 4) |
+| Sustained profitability | month 4 | **month 8** |
+
+**A $17,148 increase in the cash the church must front, and four more months before the program
+sustains itself.** That is a defensible call — a part-time director during licensing, hiring, and
+enrollment is exactly when the role matters most, and understaffing it risks the launch itself.
+But it should be a decision made in view of that number rather than a detail, which is what the
+model is for. Both configurations are one setting apart, so it is worth saving each as a scenario
+and putting the pair in front of whoever is funding this.
 
 ---
 

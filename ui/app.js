@@ -4,6 +4,7 @@ import { h, clear, append, download } from './dom.js';
 import { defaultState, loadState, saveState, clearState, migrate } from './state.js';
 import { loadTables, tables, projectFor } from './project-adapter.js';
 import { timelineControl } from './timeline-control.js';
+import { resolve as resolveSetting } from '../engine/resolver.js';
 import { createProjectionView } from './projection-view.js';
 import { createScenarios } from './scenarios.js';
 
@@ -166,50 +167,71 @@ function roomsEditor() {
     }, '+ Add room'));
 }
 
+/**
+ * Does a month-scoped override outrank the role-level value for this setting?
+ *
+ * The resolver goes most-specific-first, so byGroupMonth and byMonth both beat byGroup. A card
+ * that shows the byGroup value would then display a number the engine is not using — and an edit
+ * to it would silently do nothing.
+ */
+function overriddenByMonth(setting, roleId) {
+  if (!setting) return false;
+  const byMonth = Object.keys(setting.byMonth ?? {}).length > 0;
+  const byRoleMonth = Object.keys(setting.byGroupMonth ?? {})
+    .some((k) => k.startsWith(`${roleId}|`));
+  return byMonth || byRoleMonth;
+}
+
 function rolesEditor() {
-  const perRole = (key, fallback) => (roleId) => {
-    const setting = state.settings[key] ?? { default: fallback };
-    return setting.byGroup?.[roleId] ?? setting.default ?? fallback;
-  };
+  // Cards show the value RESOLVED AT THE OPENING MONTH, not the stored role-level default, so the
+  // number on screen is one the engine actually uses somewhere.
+  const shownValue = (key, roleId, fallback) =>
+    resolveSetting(state.settings[key] ?? { default: fallback }, { month: 0, groupId: roleId }) ?? fallback;
+
   const setPerRole = (key, fallback) => (roleId, value) => {
     const setting = state.settings[key] ?? { default: fallback };
     state.settings[key] = { ...setting, byGroup: { ...(setting.byGroup ?? {}), [roleId]: value } };
-    refresh();
+    rebuild();
   };
 
-  const wageOf = perRole('wage', 18);
-  const hoursOf = perRole('roleHours', 40);
-  const leadOf = perRole('hireLeadDays', 0);
   const setWage = setPerRole('wage', 18);
   const setHours = setPerRole('roleHours', 40);
   const setLead = setPerRole('hireLeadDays', 0);
+
+  const cell = (label, key, roleId, fallback, onChange, opts = {}) => {
+    const varies = overriddenByMonth(state.settings[key], roleId);
+    return h('label', {},
+      h('span', {},
+        label,
+        varies ? h('span', { class: 'tag tag-varies', title: 'A month-specific change overrides this — edit it on the timeline below.' }, 'by month') : null),
+      h('input', {
+        type: 'number', step: opts.step ?? '1', min: opts.min,
+        value: String(shownValue(key, roleId, fallback)),
+        disabled: varies,
+        title: varies
+          ? 'This role changes over time. Edit it on the timeline below instead.'
+          : opts.title,
+        onchange: (e) => onChange(roleId, Number(e.target.value)),
+      }));
+  };
 
   return h('div', {}, state.roles.map((role) =>
     h('div', { class: 'card' },
       h('div', { class: 'card-head' }, h('strong', {}, role.label ?? role.id)),
       h('div', { class: 'card-fields' },
-        h('label', {}, h('span', {}, 'Wage $/hr'),
-          h('input', {
-            type: 'number', step: '0.25', value: String(wageOf(role.id)),
-            onchange: (e) => setWage(role.id, Number(e.target.value)),
-          })),
-        h('label', {}, h('span', {}, 'Hours/week'),
-          h('input', {
-            type: 'number', step: '1', value: String(hoursOf(role.id)),
-            onchange: (e) => setHours(role.id, Number(e.target.value)),
-          })),
-        h('label', {}, h('span', {}, 'Hire lead (days)'),
-          h('input', {
-            type: 'number', step: '1', min: '0', value: String(Math.round(leadOf(role.id))),
-            title: 'How far ahead of the enrollment that justifies them this role is hired. '
-              + 'Under a month is prorated, not charged as a whole month.',
-            onchange: (e) => setLead(role.id, Number(e.target.value)),
-          }))))));
+        cell('Wage $/hr', 'wage', role.id, 18, setWage, { step: '0.25' }),
+        cell('Hours/week', 'roleHours', role.id, 40, setHours),
+        cell('Hire lead (days)', 'hireLeadDays', role.id, 0, setLead, {
+          min: '0',
+          title: 'How far ahead of the enrollment that justifies them this role is hired. '
+            + 'Under a month is prorated, not charged as a whole month.',
+        })))));
 }
 
 function renderInputs() {
   clear(inputsEl);
   const groups = state.groups.map((g) => ({ id: g.id, label: g.label ?? g.id }));
+  const roleScopes = state.roles.map((r) => ({ id: r.id, label: r.label ?? r.id }));
   const months = state.months;
 
   inputsEl.append(
@@ -296,11 +318,28 @@ function renderInputs() {
       h('p', { class: 'small muted', style: { margin: '4px 0 10px' } },
         'Hire lead is per role because the questions differ — a director is recruited months ' +
         'out, a floater in a fortnight. A lead under one month is prorated, not charged whole. ' +
-        'To change a lead over time, use the timeline below.'),
+        'Note what a lead does NOT do: it only pulls staffing EARLIER than the enrollment that ' +
+        'justifies it. It cannot delay a start. If someone is on the payroll from the first ' +
+        'projected month, that is their headcount setting, not their lead — see ' +
+        '“Director on staff” below.'),
+      timelineControl({
+        label: 'Hours per week', setting: state.settings.roleHours, months,
+        format: 'number', scopes: roleScopes, onChange: setSetting('roleHours'),
+        help: 'Pick a role under "Applies to". This is where a director goes part-time to full-time.',
+      }),
+      timelineControl({
+        label: 'Director on staff', setting: state.settings.directorCount, months,
+        format: 'number', onChange: setSetting('directorCount'),
+        help: 'How many directors are employed. Set 0 for months before they start — this, '
+          + 'not hire lead, is what controls when the director joins.',
+      }),
+      timelineControl({
+        label: 'Lead teachers per room', setting: state.settings.leadsPerRoom, months,
+        format: 'number', onChange: setSetting('leadsPerRoom'),
+      }),
       timelineControl({
         label: 'Hire lead, all roles (days)', setting: state.settings.hireLeadDays, months,
-        format: 'number', scopes: state.roles.map((r) => ({ id: r.id, label: r.label ?? r.id })),
-        onChange: setSetting('hireLeadDays'),
+        format: 'number', scopes: roleScopes, onChange: setSetting('hireLeadDays'),
         help: 'Sets every role at once, or pick one role under "Applies to".',
       }),
       field('Wage growth / yr',

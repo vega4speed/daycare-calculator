@@ -145,6 +145,12 @@
   .detail-grid h4 { margin: 0 0 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.04em; color: var(--muted); }
   .detail-grid ul { margin: 0; padding-left: 16px; font-size: 12.5px; }
   .detail-grid p { margin: 6px 0 0; overflow-wrap: anywhere; }
+  table.months tr.detail .mini-table th {
+    position: static; padding: 2px 4px; font-size: 10px; text-align: left;
+    text-transform: uppercase; letter-spacing: 0.03em; color: var(--muted); background: none;
+    border-bottom: 1px solid var(--grid);
+  }
+  table.months tr.detail .mini-table th:not(:first-child) { text-align: right; }
   table.months tr.detail .mini-table td { white-space: normal; }
   table.months tr.detail .mini-table td:last-child { text-align: right; white-space: nowrap; }
   .mini-table tr.total td { font-weight: 600; }

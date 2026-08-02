@@ -172,6 +172,85 @@ export function createProjectionView(container) {
     );
   }
 
+  /**
+   * Staffing, as two clearly separate quantities.
+   *
+   * These were previously a table and a one-line note stacked together with nothing saying they
+   * measured different things, which reads as a contradiction: a pre-opening month shows three
+   * people on payroll above a line saying "0 adults on the floor · 0 staff-hours/week". Both are
+   * right. One is what the LICENSED RATIO requires given the children present; the other is who
+   * is actually EMPLOYED. Before opening there are no children, so the requirement is genuinely
+   * zero while people are already being paid — which is the whole point of hire lead, and worth
+   * seeing rather than puzzling over.
+   */
+  function staffingSection(row) {
+    const st = row.staffing;
+    const seats = st.seats;
+    const required = st.weeklyStaffHours;
+
+    // The director does not stand in a classroom, so their hours are not ratio coverage.
+    let classroomHours = 0;
+    let classroomPeople = 0;
+    let anyFractional = false;
+    for (const r of Object.values(seats?.byRole ?? {})) {
+      if (!Number.isInteger(r.count)) anyFractional = true;
+      if (r.kind !== 'director') {
+        classroomHours += r.weeklyHours;
+        classroomPeople += r.count;
+      }
+    }
+    const buffer = classroomHours - required;
+
+    return [
+      h('h4', {}, 'Staffing'),
+
+      h('p', { class: 'small' },
+        h('strong', {}, 'Required by ratio: '),
+        required > 0
+          ? `${st.peakAdults} adult${st.peakAdults === 1 ? '' : 's'} on the floor at once, ` +
+            `${required.toFixed(0)} staff-hours a week — ${st.fte.toFixed(2)} full-time equivalents. ` +
+            'One adult covering a whole day is more than one employee, which is why the two differ.'
+          : 'nothing — no children are enrolled yet, so no coverage is legally required.'),
+
+      seats && seats.headcount > 0
+        ? h('table', { class: 'mini-table' },
+          h('thead', {}, h('tr', {},
+            h('th', {}, 'On payroll'), h('th', {}, 'People'), h('th', {}, '$/hr'), h('th', {}, 'Cost'))),
+          h('tbody', {}, Object.values(seats.byRole).map((r) =>
+            h('tr', {},
+              h('td', {}, r.roleId),
+              h('td', {}, people(r.count)),
+              h('td', {}, `$${r.averageWage.toFixed(2)}`),
+              h('td', {}, usdFull(r.monthlyWages))))))
+        : h('p', { class: 'muted small' }, 'Nobody on payroll this month.'),
+
+      required > 0
+        ? h('p', { class: 'small muted' },
+          `${people(classroomPeople)} classroom staff supply ${classroomHours.toFixed(0)} hours a week` +
+          (buffer > 0.5
+            ? ` — ${buffer.toFixed(0)} more than the ratio needs, which is your cover for breaks and absences.`
+            : buffer < -0.5
+              ? ` — ${Math.abs(buffer).toFixed(0)} SHORT of the ratio requirement.`
+              : ', exactly the ratio requirement, with no cover for breaks or absences.') +
+          ' The director is not counted toward ratio.')
+        : h('p', { class: 'small muted' },
+          'Everyone above is being paid ahead of the children arriving — the director, plus any ' +
+          'classroom staff pulled forward by their hire lead.'),
+
+      anyFractional
+        ? h('p', { class: 'small muted' },
+          'Fractions are people who start part-way through the month: a hire lead shorter than a ' +
+          'month puts someone on payroll for only part of it, so they are charged for that share.')
+        : null,
+
+      st.hiringAhead
+        ? h('p', { class: 'small' },
+          `Staffed ahead of enrollment — the longest hire lead here is ` +
+          `${Math.round(st.maxLeadDays)} days.`)
+        : null,
+    ];
+  }
+
   function detailPanel(row, prev) {
     const trans = transitionsFor(row, prev, state);
     const seats = row.staffing?.seats;
@@ -185,26 +264,7 @@ export function createProjectionView(container) {
               ? h('ul', {}, trans.map((t) => h('li', { class: `t-${t.kind}` }, t.text)))
               : h('p', { class: 'muted small' }, 'Nothing notable.')),
 
-          h('div', {},
-            h('h4', {}, 'Staffing'),
-            seats
-              ? h('table', { class: 'mini-table' },
-                h('tbody', {}, Object.values(seats.byRole).map((r) =>
-                  h('tr', {},
-                    h('td', {}, r.roleId),
-                    h('td', {}, people(r.count)),
-                    h('td', {}, `$${r.averageWage.toFixed(2)}/hr`),
-                    h('td', {}, usdFull(r.monthlyWages))))))
-              : h('p', { class: 'muted small' }, 'No staff this month.'),
-            row.staffing.hiringAhead
-              ? h('p', { class: 'small' },
-                `Staffed ahead of enrollment — the longest hire lead here is ` +
-                `${Math.round(row.staffing.maxLeadDays)} days.`)
-              : null,
-            h('p', { class: 'small muted' },
-              `${row.staffing.peakAdults} adult(s) on the floor at peak · ` +
-              `${row.staffing.fte.toFixed(2)} FTE to cover the day · ` +
-              `${row.staffing.weeklyStaffHours.toFixed(0)} staff-hours/week`)),
+          h('div', {}, staffingSection(row)),
 
           h('div', {},
             h('h4', {}, 'Revenue'),

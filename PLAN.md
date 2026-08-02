@@ -136,10 +136,15 @@ Tagged: **[doc]** stated in the business plan · **[derive]** computed, not ente
 | Teachers required | [derive] | ceil per room from ratio + rooms open. The doc's phases (2 → 3 → 4 → 5 teachers) should fall out of this, not be typed in — that's the model earning its keep |
 | Hire lead time | [doc, risk] | "Hiring too early" is named as a top risk. Model as: staff hired N months before the enrollment that justifies them |
 | Manual staffing override | [decide] | You should be able to force a headcount in a month regardless of what the ratio says — sticky setting, same as everything else |
-| Wage per role | [derive from doc] | Payroll $9,300/mo for 2 teachers + PT director ⇒ ~$3,100 each. **[decide]** enter as hourly × hours, or monthly salary per role? |
+| Wage per role | [Jake] | Hourly × hours/week. Lead $20–21, teacher $18, floater $17, director $26. See §4.8 |
+| Roles + headcount rules | [Jake] | Lead ≈1/classroom, teacher = ratio remainder, floater = a pool (the buffer lever), director ×1. §4.8 |
+| Early-hire premium | [Jake] | First N hires in a role paid above later ones — a fragility premium. Needs a per-role hire-index axis. §4.8 |
+| Market comp range per role | **[ask Jake]** | min/mid/max, to compute compa-ratio. He has researched this |
+| Turnover ↔ compa-ratio | [decide, §4.8] | User-adjustable relationship. An explicit assumption, not an empirical constant |
+| Turnover cost | [decide, §4.8] | Vacancy coverage (mandatory — ratios are law), recruiting, ramp, and enrollment loss |
 | Director: PT → FT | [doc] | Phase 4. A sticky override on director hours |
-| Employer payroll tax burden | [gap] | **The doc's payroll figures don't say whether they include employer FICA (7.65%), FUTA, or SUTA.** If $9,300 is gross wages only, real payroll cost is ~$10,100+. This is `engine/payroll.js` |
-| Benefits / paid time off / substitutes | [decide] | Absent from the doc; substitutes in particular are unavoidable in childcare |
+| Employer payroll tax burden | **[resolved, §4.8]** | The doc's payroll figures are gross wages, excluding employer FICA/FUTA/SUTA — confirmed by reconciling Jake's rates against both ends of the ramp. Computed explicitly in `engine/payroll.js` |
+| Benefits / paid time off | [decide] | Absent from the doc. Substitutes are handled via the floater pool + vacancy coverage |
 | Wage growth escalator | [decide] | The doc itself names low wages as a sector-wide staffing problem |
 
 ### 4.5 Expenses
@@ -230,6 +235,132 @@ The calculator should be able to settle that question rather than leave it to in
 
 ---
 
+## 4.8 Compensation, roles, and turnover (from Jake, 2026-08-02)
+
+The strategic premise: **pay above the midpoint of the market range to reduce turnover.** That
+makes comp position a lever with a payoff, not just a cost — so the calculator has to model both
+sides of it. This is the single most interesting piece of the model, because turnover is the one
+assumption that touches payroll, staffing feasibility, *and* revenue at the same time.
+
+### Roles and rates
+
+| Role | Rate | Headcount rule |
+|---|---|---|
+| Lead teacher | $20–21/hr | Assumed 1 per classroom |
+| Teacher | $18/hr | Ratio-driven remainder |
+| Floater | $17/hr | **Not one per class** — a pool; this is the buffer lever (below) |
+| Director | $26/hr | 1; part-time at launch, full-time by Phase 4 |
+
+Roles are a first-class entity in the model, the way `accounts` are in the retirement calculator.
+Each carries an hourly wage (a setting, so it can change by month), hours/week, and a headcount
+rule. Monthly cost is `wage × hours/week × 52 ÷ 12`.
+
+### Finding: the business plan's payroll excludes employer payroll taxes
+
+Jake's rates reconcile with the plan's payroll line at both ends of the ramp — which pins down
+what those figures do and don't include:
+
+| | Gross wages | + employer FICA (7.65%) | Plan says |
+|---|---|---|---|
+| Phase 1 — 1 lead + 1 teacher + PT director | $8,927 | $9,610 | **$9,300** |
+| Phase 4 — 3 leads + 2 teachers + FT director | $21,407 | $23,044 | **$22,000** |
+
+Both plan figures sit between gross and gross-plus-FICA, much nearer gross. Two conclusions:
+
+1. **Jake's rates are consistent with the plan** — they independently reproduce both payroll
+   figures to within a few percent. The staffing model hangs together.
+2. **The plan's payroll almost certainly excludes the employer's share of payroll taxes.**
+   Adding employer FICA alone costs ~$680/mo at launch and ~$1,640/mo at Phase 4, and TN
+   unemployment tax (SUTA + FUTA) sits on top of that. At launch that consumes roughly a third
+   of the stated $1,800–2,100 net income — real net is closer to **$1,100–1,400**.
+
+This resolves open issue §7.3. The model computes employer payroll tax explicitly rather than
+folding it into a wage figure.
+
+### Comp position → turnover
+
+Measured as **compa-ratio** = paid wage ÷ market midpoint. Jake's "over mid" is a compa-ratio
+above 1.0. Per role, the model needs a market range (min / mid / max) and the paid wage; the
+compa-ratio falls out.
+
+Turnover as a function of compa-ratio, applied per role:
+
+```
+annualTurnover = clamp(
+  baseTurnoverAtMid × (1 − sensitivity × (compaRatio − 1)),
+  floorTurnover,
+  ceilingTurnover
+)
+```
+
+Three user-adjustable knobs (`baseTurnoverAtMid`, `sensitivity`, `floorTurnover`), all settings,
+so they can differ by role and by month.
+
+**This relationship must be presented as an assumption, not as evidence.** Sector-wide childcare
+turnover is well documented as high, and low wages are well documented as a driver — but there is
+no credible published elasticity that says "1% above midpoint buys X% less turnover." I won't
+manufacture one. The default will be a clearly-labeled starting guess, the UI will say so, and
+the honest use of the feature is *sensitivity analysis*: "how good would this relationship have to
+be for the raise to pay for itself?" That question the calculator can answer rigorously, and it's
+the more useful question anyway.
+
+### What turnover costs
+
+The lever only pays for itself if the cost side is modeled. Four components:
+
+1. **Vacancy coverage.** The big one, and it's not optional: ratios are a licensing requirement,
+   so an empty seat must be covered by a substitute, overtime, or a floater — or the room closes.
+   Running short is not a legal option, which is why this cost is unavoidable rather than a
+   choice.
+2. **Recruiting** — advertising, background checks (TN-required), onboarding admin.
+3. **Ramp** — a new hire is not immediately at full effectiveness; modeled as a productivity
+   discount over N weeks, or simply as a fixed onboarding cost.
+4. **Enrollment loss.** Families leave when their child's teacher leaves. This is the component
+   that makes turnover a *revenue* problem rather than a payroll problem, and it's why the whole
+   lever matters. Modeled as: each departure has probability *p* of costing *k* enrolled children.
+
+### Wage tiering by hire order — the fragility premium
+
+Jake's idea: the first couple of teachers are paid a bit above the later ones, because at lean
+staffing a single departure is catastrophic, and once a buffer exists the system can absorb one.
+
+The reasoning is about **fragility**, so the model should key on it directly. Two ways to express
+it, and I'd build both:
+
+- **Simple (the default):** a per-role `earlyHirePremium: { count: 2, amount: 1.50 }` — the first
+  N hires in a role get +$X/hr, held for as long as they're employed. Predictable, matches what
+  you'd actually put in an offer letter, easy to reason about.
+- **Derived (the interesting one):** premium as a function of the **coverage buffer** at the time
+  of hire — staff on hand versus the ratio minimum. At zero buffer the premium is at maximum; it
+  decays to zero as the buffer grows. This is Jake's stated reasoning expressed as a rule rather
+  than a hardcoded "first two," and it self-adjusts if the ramp changes.
+
+Mechanically this needs a third axis the retirement calculator never had: **hire index within a
+role**. So staff are modeled as individual **seats** — each with a role, a hire month, and its own
+wage — created as room and ratio requirements demand them. A seat's wage is
+`resolve(wage, {roleId, month})` plus its premium. Seats also give turnover somewhere to live: a
+departure is a seat ending and a new one starting, with all four costs above attached.
+
+### The floater is the buffer lever
+
+Worth calling out because it ties the whole section together. Floaters cost $17/hr and don't
+belong to a classroom — but they're what covers breaks, absences, and vacancies while keeping
+ratios legal. So floater headcount is simultaneously:
+
+- a payroll cost,
+- the thing that makes ratio compliance survivable during breaks and callouts,
+- and the thing that absorbs turnover without emergency substitute costs or a room closure.
+
+Which means there's a real optimum, and the calculator can find it: **how many floaters, and how
+far above midpoint, minimizes total cost including the revenue lost to turnover?** That's a
+solver in the same family as the retirement calculator's `solveMaxSustainableSpending` — a search
+over `project()`, not a mode of it.
+
+**Open question for Jake:** he mentioned a comp range he'd already researched. The actual min /
+mid / max per role would be much better than reverse-engineering a midpoint from the target wage.
+
+---
+
 ## 5. Engine layout
 
 ```
@@ -238,10 +369,13 @@ engine/
   capacity.js       rooms + ratios -> licensed capacity, staff required
   enrollment.js     ramp + attrition + capacity clamp -> children per group per month
   revenue.js        tuition, DHS split, gap, collections, payment lag
-  payroll.js        headcount -> wages + employer taxes (verified-figures JSON, _meta cited)
+  staffing.js       roles + seats: who is hired when, at what wage, incl. the early-hire premium
+  turnover.js       compa-ratio -> turnover rate -> departures + their four costs (§4.8)
+  payroll.js        seats -> wages + employer taxes (verified-figures JSON, _meta cited)
   expenses.js       per-child / fixed / escalated cost lines
   project.js        the month loop: ties it together, carries cash forward
-  solve.js          break-even enrollment, minimum startup capital, first-profitable month
+  solve.js          break-even enrollment, minimum startup capital, first-profitable month,
+                    and the floater/comp optimum (§4.8) — searches OVER project(), not modes of it
 data/
   tn-childcare.json ratios, group sizes, DHS rates — VERIFIED with citations, or clearly marked TBD
   payroll.json      FICA/FUTA/SUTA rates and wage bases, per year
@@ -274,8 +408,10 @@ the doc's Scenario A ($16,100 rev / ~$14,000 exp) and Scenario B before it's tru
    space is already fully equipped and license-ready, or this line is missing a large number.
 2. **No rent or facility cost.** If the church absorbs it, that should be an explicit $0
    assumption, because it means these margins can't be compared to a standalone center's.
-3. **Payroll tax treatment is unstated.** ~7.65% employer FICA plus unemployment tax on top of
-   $9,300/mo is ~$800+/mo — a third of the stated launch net income of $1,800–2,100.
+3. ~~**Payroll tax treatment is unstated.**~~ **RESOLVED 2026-08-02 (§4.8): the payroll figures are
+   gross wages, excluding the employer's share.** Jake's per-role rates reproduce both $9,300 and
+   $22,000 to within a few percent as gross wages. Employer FICA alone adds ~$680/mo at launch,
+   cutting the stated $1,800–2,100 net to roughly $1,100–1,400 before TN unemployment tax.
 4. **Revenue at 36 kids appears twice with different numbers** — $41,400 (§7) vs $39,600 (§13).
    §13 explains this (all-Pre-K vs blended mix), so it's intentional, but the model should be
    explicit about which mix it's using.
@@ -298,7 +434,8 @@ None of these block building — they're what the calculator is *for*.
    (25 tests). Repo: `github.com/vega4speed/daycare-calculator`.
 2. **Phase 1** — capacity/ratios + enrollment ramp, pure, tested against the doc's phases
 3. **Phase 2** — revenue (tuition only, no DHS), expenses, net, cash. Reproduce Scenario A + B
-4. **Phase 3** — staffing derived from ratios, payroll taxes, hire lead time
+4. **Phase 3** — roles + seats, staffing derived from ratios, the early-hire premium, employer
+   payroll taxes, hire lead time. Then turnover: compa-ratio → departures → the four costs (§4.8)
 5. **Phase 4** — DHS split, collections, payment lag
 6. **Phase 5** — UI: accounts-editor analog (rooms/groups), setting controls, month table, chart
 7. **Phase 6** — solvers (break-even, minimum capital), transitions narration

@@ -10,7 +10,9 @@
 //     $1,175 from month 13" is one glance rather than an arithmetic exercise
 //   - a list: the overrides themselves, editable, each one a month + step-or-spike + value
 
-import { h, s, clear } from './dom.js';
+import {
+  h, s, clear, append,
+} from './dom.js';
 import { resolve, listOverrides, setOverride, clearOverride, timeline } from '../engine/resolver.js';
 
 const COL = {
@@ -187,12 +189,38 @@ export function timelineControl({
       }, 'Add change'));
   }
 
+  /**
+   * A one-line summary of what's overridden, shown when the timeline is collapsed. Without
+   * this, a setting can carry per-group or per-month values (see engine/resolver.js) that are
+   * invisible until you happen to open "Change over time" and pick the right scope — the exact
+   * trap that produced a 14-child preschool target nobody could find.
+   */
+  function overrideSummary() {
+    const rows = listOverrides(current);
+    if (rows.length === 0) return null;
+
+    const labelFor = (groupId) => {
+      if (groupId == null) return 'Everyone';
+      return scopes?.find((sc) => sc.id === groupId)?.label ?? groupId;
+    };
+
+    const counts = new Map();
+    for (const r of rows) {
+      const label = labelFor(r.groupId);
+      counts.set(label, (counts.get(label) ?? 0) + 1);
+    }
+
+    const parts = [...counts.entries()].map(([label, n]) => `${label} (${n} change${n === 1 ? '' : 's'})`);
+    return `Overridden — ${parts.join(', ')}`;
+  }
+
   function render() {
     clear(root);
 
     const resolvedNow = resolve(current, { month: 0, groupId: state.scope || undefined });
+    const summary = !state.expanded ? overrideSummary() : null;
 
-    root.append(
+    append(root,
       h('div', { class: 'setting-head' },
         h('div', { class: 'setting-label' },
           h('span', {}, label),
@@ -222,6 +250,12 @@ export function timelineControl({
             onclick: () => { state.expanded = !state.expanded; render(); },
           }, state.expanded ? 'Hide timeline' : 'Change over time')),
       ),
+      summary
+        ? h('p', {
+          class: 'small muted override-summary',
+          onclick: () => { state.expanded = true; render(); },
+        }, summary)
+        : null,
     );
 
     if (state.expanded) {

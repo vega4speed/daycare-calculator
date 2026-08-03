@@ -41,9 +41,11 @@ export function planFor(state) {
  *
  * `cashFloor` is the operating buffer the sponsor wants to keep on hand — the difference between
  * "never technically overdrawn" and "never white-knuckled", which is a real distinction when the
- * answer is going to a church board.
+ * answer is going to a church board. Defaults from `state.options.cashFloor` (a plan setting, see
+ * ui/state.js) so it survives migration; the parameter remains for callers that want to override
+ * it without touching plan state.
  */
-export function projectFor(state, { cashFloor = 10000 } = {}) {
+export function projectFor(state, { cashFloor = state.options.cashFloor ?? 10000 } = {}) {
   if (!TABLES) return null;
   const plan = planFor(state);
 

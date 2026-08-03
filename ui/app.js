@@ -426,6 +426,10 @@ function renderInputs() {
         numberInput(months.to, (v) => { state.months.to = v; rebuild(); }, { step: 1, min: 1 })),
       field('Starting cash',
         numberInput(state.startingCash, (v) => { state.startingCash = v; refresh(); })),
+      field('Operating cash buffer',
+        numberInput(state.options.cashFloor, (v) => { state.options.cashFloor = v; refresh(); }),
+        'Cash on hand to keep in reserve beyond break-even — "never overdrawn" vs. "never ' +
+          'white-knuckled". Included in the required-capital figure.'),
     ),
 
     section('Rooms',

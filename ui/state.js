@@ -97,6 +97,7 @@ export function defaultState() {
       payrollMode: 'roles',
       dhsLagMonths: 1,
       gapPolicy: 'charge',
+      cashFloor: 10000,
       daysOpen: 5,
       hoursPerFte: 40,
       escalators: { general: 0.03, insurance: 0.08, wage: 0.04 },

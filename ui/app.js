@@ -209,7 +209,14 @@ function scheduleTypeCard(st, i) {
       h('input', {
         class: 'card-title', value: st.label ?? st.id,
         onchange: (e) => { state.scheduleTypes[i].label = e.target.value; rebuild(); },
-      })),
+      }),
+      h('button', {
+        class: 'link danger', title: 'Remove this schedule type',
+        onclick: () => {
+          state.scheduleTypes.splice(i, 1);
+          rebuild();
+        },
+      }, '×')),
     h('div', { class: 'card-fields' },
       h('label', {}, h('span', {}, 'Arrives as early as'),
         h('input', { type: 'number', step: '0.25', class: 'val', value: String(st.arriveHour), onchange: set('arriveHour') })),
@@ -218,7 +225,34 @@ function scheduleTypeCard(st, i) {
       h('label', {}, h('span', {}, 'Starts leaving at'),
         h('input', { type: 'number', step: '0.25', class: 'val', value: String(departFrom), onchange: set('departFromHour') })),
       h('label', {}, h('span', {}, 'Everyone’s out by'),
-        h('input', { type: 'number', step: '0.25', class: 'val', value: String(st.departHour), onchange: set('departHour') }))),
+        h('input', { type: 'number', step: '0.25', class: 'val', value: String(st.departHour), onchange: set('departHour') })),
+      h('label', {}, h('span', {}, 'Days per week'),
+        h('input', {
+          type: 'number', step: '1', min: '1', max: '7', class: 'val',
+          value: String(st.daysPerWeek ?? ''), placeholder: 'same as center',
+          onchange: (e) => {
+            const raw = e.target.value;
+            if (raw.trim() === '') delete state.scheduleTypes[i].daysPerWeek;
+            else {
+              const v = Number(raw);
+              if (Number.isNaN(v)) return;
+              state.scheduleTypes[i].daysPerWeek = v;
+            }
+            rebuild();
+          },
+        })),
+      h('label', {}, h('span', {}, 'Tuition multiplier'),
+        h('input', {
+          type: 'number', step: '0.01', min: '0', class: 'val',
+          value: String(st.tuitionMultiplier ?? 1),
+          title: '1 = full private-pay tuition; 0.65 means this schedule is billed at 65% of it.',
+          onchange: set('tuitionMultiplier'),
+        })),
+      h('label', {}, h('span', {}, 'DHS pays part-time rate'),
+        h('input', {
+          type: 'checkbox', checked: !!st.dhsPartTime,
+          onchange: (e) => { state.scheduleTypes[i].dhsPartTime = e.target.checked; rebuild(); },
+        }))),
     h('p', { class: 'small muted' },
       isFixed
         ? `Fixed: everyone arrives ${clockTime(st.arriveHour)}, leaves ${clockTime(st.departHour)}.`
@@ -227,7 +261,58 @@ function scheduleTypeCard(st, i) {
 }
 
 function scheduleTypesEditor() {
-  return h('div', {}, state.scheduleTypes.map((st, i) => scheduleTypeCard(st, i)));
+  return h('div', {},
+    state.scheduleTypes.map((st, i) => scheduleTypeCard(st, i)),
+    h('button', {
+      class: 'small',
+      onclick: () => {
+        state.scheduleTypes.push({
+          id: `schedule-${Date.now()}`, label: 'New schedule',
+          arriveHour: 7.5, departHour: 12, daysPerWeek: 5, tuitionMultiplier: 0.65,
+        });
+        rebuild();
+      },
+    }, '+ Add schedule type'));
+}
+
+/**
+ * How a group's enrollment target splits across schedule types. With one type there is nothing
+ * to split — everyone goes there. `state.settings.scheduleMix` is a resolver setting whose VALUE
+ * is a weight map ({full: 3, halfAM: 1}), not a scalar, so it can't reuse timelineControl; this
+ * editor only reaches the byGroup level (no month timeline) — plenty for "this group splits
+ * these two ways," and a month-varying mix is still settable by hand-editing an exported plan.
+ */
+function scheduleMixCard(group) {
+  const current = resolveSetting(state.settings.scheduleMix, { groupId: group.id })
+    ?? { [state.scheduleTypes[0]?.id]: 1 };
+
+  const setWeight = (typeId) => (e) => {
+    const v = Number(e.target.value);
+    if (Number.isNaN(v)) return;
+    const setting = state.settings.scheduleMix;
+    const base = setting.byGroup?.[group.id] ?? current;
+    state.settings.scheduleMix = {
+      ...setting,
+      byGroup: { ...(setting.byGroup ?? {}), [group.id]: { ...base, [typeId]: v } },
+    };
+    refresh();
+  };
+
+  return h('div', { class: 'card' },
+    h('div', { class: 'card-head' }, h('strong', {}, group.label ?? group.id)),
+    h('div', { class: 'card-fields' },
+      state.scheduleTypes.map((st) =>
+        h('label', {}, h('span', {}, st.label ?? st.id),
+          h('input', {
+            type: 'number', step: 'any', min: '0', class: 'val',
+            value: String(current[st.id] ?? 0),
+            onchange: setWeight(st.id),
+          })))),
+    h('p', { class: 'small muted' }, 'Weights, not percentages — {full: 3, halfAM: 1} means 3-in-4 full day.'));
+}
+
+function scheduleMixEditor() {
+  return h('div', {}, state.groups.map((g) => scheduleMixCard(g)));
 }
 
 /**
@@ -417,6 +502,11 @@ function renderInputs() {
       'Set "Arrives as early as" equal to "Everyone’s in by" for a fixed arrival time (and likewise for departure); ' +
       'widen the gap to spread attendance, and staffing, across a window instead of switching on at an instant.',
       scheduleTypesEditor()),
+
+    section('Schedule mix', 'How each group’s enrollment target splits across the schedule types above. ' +
+      'With only one type this does nothing — everyone goes there automatically. Add a second type ' +
+      '(e.g. a Half day (PM)) and give it a nonzero weight here, or it will always show 0 children.',
+      scheduleMixEditor()),
 
     section('Staffing', 'Headcount is derived from licensed ratios and the length of your operating day.',
       rolesEditor(),

@@ -128,10 +128,12 @@ export function timelineControl({
         h('th', {}, 'Month'), h('th', {}, 'Applies'), h('th', {}, 'Value'), h('th', {}))),
       h('tbody', {}, rows.map((r) =>
         h('tr', {},
-          h('td', {}, String(r.month)),
-          h('td', {}, r.sticky
-            ? h('span', { class: 'tag' }, 'from here on')
-            : h('span', { class: 'tag tag-spike' }, 'this month only')),
+          h('td', {}, r.level === 'byGroup' ? '—' : String(r.month)),
+          h('td', {}, r.level === 'byGroup'
+            ? h('span', { class: 'tag' }, "this group's default")
+            : (r.sticky
+              ? h('span', { class: 'tag' }, 'from here on')
+              : h('span', { class: 'tag tag-spike' }, 'this month only'))),
           h('td', {},
             h('input', {
               type: 'number', class: 'mini', value: fmt.toStr(r.value), step: 'any',

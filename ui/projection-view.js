@@ -5,7 +5,9 @@
 // finding buried in row 14 of a spreadsheet is a finding nobody acts on.
 
 import { h, s, clear } from './dom.js';
-import { COL, usd, usdFull, niceCeil } from './chart-utils.js';
+import {
+  COL, usd, usdFull, niceCeil, clockTime,
+} from './chart-utils.js';
 import { monthLabel } from './state.js';
 import { transitionsFor } from './project-adapter.js';
 
@@ -183,14 +185,7 @@ export function createProjectionView(container) {
    * zero while people are already being paid — which is the whole point of hire lead, and worth
    * seeing rather than puzzling over.
    */
-  /** Decimal hour -> "7:30am". */
-  const clock = (v) => {
-    const hh = Math.floor(v);
-    const mm = Math.round((v - hh) * 60);
-    const ampm = hh >= 12 ? 'pm' : 'am';
-    const h12 = hh % 12 === 0 ? 12 : hh % 12;
-    return `${h12}${mm ? ':' + String(mm).padStart(2, '0') : ''}${ampm}`;
-  };
+  const clock = clockTime;
 
   /**
    * Room-by-room: who is present, how many adults the ratio demands, and which shifts cover it.

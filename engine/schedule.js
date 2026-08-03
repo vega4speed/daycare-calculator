@@ -24,14 +24,25 @@
 // The block model
 // ---------------------------------------------------------------------------------------------
 // The day is cut into blocks at every boundary that matters: opening, closing, the Chart 3
-// fringe boundaries, and every schedule type's arrival and departure. Within a block the set of
-// children present is constant, so ratio can be evaluated exactly once per block.
+// fringe boundaries, and every schedule type's arrival and departure. Within a block the ramp
+// state of every schedule type is constant, so occupancy can be evaluated exactly once per block.
 //
 // TN Rule 1240-04-01-.22(1)(c)3 supplies the fringe boundary for free: combined grouping at a
 // more permissive ratio is allowed for "the first/last hour and a half of each day only." That
 // is precisely the accommodation for extended hours, so the model uses it where it applies.
 //
 // Hours are decimal (7.5 = 7:30am, 16.5 = 4:30pm, 18 = 6pm).
+//
+// ---------------------------------------------------------------------------------------------
+// Arrival isn't always a single instant
+// ---------------------------------------------------------------------------------------------
+// A schedule type's `arriveHour`/`departHour` are the OUTER bounds of when its children are on
+// site at all — the earliest possible arrival and the latest possible departure. By default that
+// is also the exact moment: everyone in that schedule shows up and leaves on the dot. Two more
+// fields, `arriveByHour` and `departFromHour`, let a plan say instead "families trickle in
+// between 7:00 and 8:30" — presence for that schedule type ramps linearly from 0% to 100% across
+// [arriveHour, arriveByHour], holds at 100% through the middle of the day, then ramps back down
+// across [departFromHour, departHour]. See `presenceFraction` below.
 
 const FRINGE_HOURS = 1.5; // Rule .22(1)(c)3: "first/last hour and one-half of each day only"
 
@@ -45,7 +56,8 @@ export function overlapHours(aStart, aEnd, bStart, bEnd) {
  * ratio rule applies.
  *
  * @param {{openHour:number, closeHour:number}} hours
- * @param {Array<{arriveHour:number, departHour:number}>} scheduleTypes
+ * @param {Array<{arriveHour:number, arriveByHour?:number, departFromHour?:number,
+ *   departHour:number}>} scheduleTypes
  * @returns {Array<{start, end, hours, fringe:boolean}>}
  */
 export function dayBlocks({ openHour, closeHour }, scheduleTypes = []) {
@@ -61,7 +73,11 @@ export function dayBlocks({ openHour, closeHour }, scheduleTypes = []) {
   }
 
   for (const s of scheduleTypes) {
-    for (const h of [s.arriveHour, s.departHour]) {
+    const bounds = [
+      s.arriveHour, s.arriveByHour ?? s.arriveHour,
+      s.departFromHour ?? s.departHour, s.departHour,
+    ];
+    for (const h of bounds) {
       if (h > openHour && h < closeHour) cuts.add(h);
     }
   }
@@ -89,12 +105,43 @@ export function dayBlocks({ openHour, closeHour }, scheduleTypes = []) {
 }
 
 /**
+ * What fraction of a schedule type's children are present during a block, on a scale of 0 to 1.
+ *
+ * `arriveHour`/`departHour` are the OUTER bounds — the earliest anyone shows up and the latest
+ * anyone is still there, exactly as before. `arriveByHour` (default: `arriveHour`) and
+ * `departFromHour` (default: `departHour`) narrow that into a window: presence ramps linearly
+ * from 0 to 1 across [arriveHour, arriveByHour], holds at 1 through the middle of the day, then
+ * ramps back down across [departFromHour, departHour]. Leaving the new fields unset collapses
+ * both ramps to zero width, which reproduces the old everyone-on-the-dot behavior exactly.
+ *
+ * Classification uses the block's MIDPOINT rather than its endpoints, because a block is
+ * half-open — the instant a ramp's flat boundary sits exactly on a block edge, evaluating AT
+ * that edge cannot tell which side it belongs to. A non-degenerate block's midpoint always falls
+ * strictly inside whichever single zone (before / ramping up / plateau / ramping down / after)
+ * the block occupies, since `dayBlocks` already cuts at every one of these boundaries.
+ */
+function presenceFraction(s, block) {
+  const arrive = s.arriveHour;
+  const arriveBy = s.arriveByHour ?? arrive;
+  const departFrom = s.departFromHour ?? s.departHour;
+  const depart = s.departHour;
+  const mid = (block.start + block.end) / 2;
+
+  if (mid <= arrive || mid >= depart) return 0;
+  if (mid < arriveBy) return (block.end - arrive) / (arriveBy - arrive);
+  if (mid > departFrom) return (depart - block.start) / (depart - departFrom);
+  return 1;
+}
+
+/**
  * Children present in each block.
  *
- * `peak` counts every child enrolled in a schedule that overlaps the block, ignoring
+ * `peak` sums every child enrolled in a schedule that overlaps the block, weighted by how much
+ * of that schedule's ramp window the block falls in (see `presenceFraction`), ignoring
  * days-per-week: ratio must hold on the busiest day, and you staff for that.
- * `average` weights by daysPerWeek/daysOpen — the utilization figure, useful for revenue and for
- * seeing how much of a seat a part-time child actually consumes.
+ * `average` weights the same way, further scaled by daysPerWeek/daysOpen — the utilization
+ * figure, useful for revenue and for seeing how much of a seat a part-time child actually
+ * consumes.
  *
  * KNOWN SIMPLIFICATION: part-week schedules (MWF vs T/Th) are averaged, not laid out on a real
  * weekly calendar. Two complementary part-week groups may in reality peak on different days,
@@ -117,11 +164,11 @@ export function occupancy(enrolledByType, blocks, scheduleTypes, { daysOpen = 5 
       const s = byType.get(typeId);
       if (!s) throw new Error(`Unknown schedule type: ${typeId}`);
 
-      // Present for ANY part of the block ⇒ present for ratio purposes during that block.
-      if (overlapHours(s.arriveHour, s.departHour, block.start, block.end) > 0) {
-        peak += n;
+      const frac = presenceFraction(s, block);
+      if (frac > 0) {
+        peak += n * frac;
         present[typeId] = n;
-        average += n * Math.min(1, (s.daysPerWeek ?? daysOpen) / daysOpen);
+        average += n * frac * Math.min(1, (s.daysPerWeek ?? daysOpen) / daysOpen);
       }
     }
 

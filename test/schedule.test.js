@@ -110,6 +110,58 @@ test('zero and missing enrollment are handled', () => {
   assert.equal(occupancy(undefined, blocks, [FULL])[1].peak, 0);
 });
 
+// --- arrival/departure ramps --------------------------------------------------------------
+
+test('an arrival window ramps presence up instead of switching on at an instant', () => {
+  // Families trickle in between 7 and 9. LICENSED's own fringe boundary (openHour + 1.5 = 7.5)
+  // falls inside that ramp and splits it in two, with no second schedule type needed.
+  const flexFull = {
+    id: 'full', arriveHour: 7, arriveByHour: 9, departFromHour: 15, departHour: 17, daysPerWeek: 5,
+  };
+  const blocks = dayBlocks(LICENSED, [flexFull]);
+  const occ = occupancy({ full: 20 }, blocks, [flexFull]);
+
+  assert.equal(occ.find((b) => b.start === 6).peak, 0, 'before anyone arrives');
+  assert.equal(occ.find((b) => b.start === 7 && b.end === 7.5).peak, 5, '1/4 of the way through the 2-hour ramp');
+  assert.equal(occ.find((b) => b.start === 7.5 && b.end === 9).peak, 20, 'ramp completes by the end of this block');
+  assert.equal(occ.find((b) => b.start === 9).peak, 20, 'full core-of-day presence');
+});
+
+test('a departure window ramps presence down the same way, symmetrically', () => {
+  // LICENSED's closing fringe boundary (closeHour - 1.5 = 16.5) falls inside the 15-17 ramp.
+  const flexFull = {
+    id: 'full', arriveHour: 7, arriveByHour: 7, departFromHour: 15, departHour: 17, daysPerWeek: 5,
+  };
+  const blocks = dayBlocks(LICENSED, [flexFull]);
+  const occ = occupancy({ full: 20 }, blocks, [flexFull]);
+
+  assert.equal(occ.find((b) => b.start === 15 && b.end === 16.5).peak, 20, 'ramp has barely started');
+  assert.equal(occ.find((b) => b.start === 16.5 && b.end === 17).peak, 5, '3/4 of the way through the 2-hour ramp');
+  assert.equal(occ.find((b) => b.start === 17).peak, 0, 'after everyone has left');
+});
+
+test('an unset arrival/departure window is a zero-width ramp -- identical to the old exact-time model', () => {
+  // No arriveByHour/departFromHour set, same as every other test in this file.
+  const blocks = dayBlocks(LICENSED, [FULL, HALF_AM]);
+  const occ = occupancy({ full: 10, halfAM: 4 }, blocks, [FULL, HALF_AM]);
+  assert.deepEqual(occ.map((b) => b.peak), [0, 14, 10, 0]);
+});
+
+test('a ramp block needs fewer adults than a fully-occupied one, ratio-wise', () => {
+  const flexFull = {
+    id: 'full', arriveHour: 7, arriveByHour: 10, departFromHour: 15, departHour: 17, daysPerWeek: 5,
+  };
+  const hours = { openHour: 7, closeHour: 17 };
+  const blocks = dayBlocks(hours, [flexFull]);
+  const staffed = staffingByBlock(occupancy({ full: 20 }, blocks, [flexFull]), () => PRESCHOOL);
+
+  const rampStart = staffed.find((b) => b.start === 7);
+  const core = staffed.find((b) => b.start === 10);
+  assert.equal(core.adults, 2, 'ceil(20/13), and the >12 floor also demands 2');
+  assert.equal(rampStart.adults, 1, 'only half the ramp has arrived by 8.5: ceil(10/13)');
+  assert.ok(rampStart.adults < core.adults, 'fewer families have arrived yet');
+});
+
 // --- staffing per block ------------------------------------------------------------------
 
 test('ratio is evaluated per block, and empty blocks need nobody', () => {

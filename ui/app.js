@@ -1,6 +1,7 @@
 // app.js — the app shell: inputs on the left, projection on the right, localStorage in between.
 
 import { h, clear, append, download } from './dom.js';
+import { clockTime } from './chart-utils.js';
 import { defaultState, loadState, saveState, clearState, migrate } from './state.js';
 import { loadTables, tables, projectFor } from './project-adapter.js';
 import { timelineControl } from './timeline-control.js';
@@ -187,6 +188,49 @@ function roomsEditor() {
 }
 
 /**
+ * One schedule type's arrival/departure window: two fixed points (arriveHour, departHour) and
+ * two optional inner points (arriveByHour, departFromHour) that turn "everyone on the dot" into
+ * a ramp. Equal inner/outer values behave exactly like the old fixed-time model — see
+ * engine/schedule.js `presenceFraction`.
+ */
+function scheduleTypeCard(st, i) {
+  const set = (key) => (e) => {
+    const v = Number(e.target.value);
+    if (Number.isNaN(v)) return;
+    state.scheduleTypes[i][key] = v;
+    rebuild();
+  };
+  const arriveBy = st.arriveByHour ?? st.arriveHour;
+  const departFrom = st.departFromHour ?? st.departHour;
+  const isFixed = arriveBy === st.arriveHour && departFrom === st.departHour;
+
+  return h('div', { class: 'card' },
+    h('div', { class: 'card-head' },
+      h('input', {
+        class: 'card-title', value: st.label ?? st.id,
+        onchange: (e) => { state.scheduleTypes[i].label = e.target.value; rebuild(); },
+      })),
+    h('div', { class: 'card-fields' },
+      h('label', {}, h('span', {}, 'Arrives as early as'),
+        h('input', { type: 'number', step: '0.25', class: 'val', value: String(st.arriveHour), onchange: set('arriveHour') })),
+      h('label', {}, h('span', {}, 'Everyone’s in by'),
+        h('input', { type: 'number', step: '0.25', class: 'val', value: String(arriveBy), onchange: set('arriveByHour') })),
+      h('label', {}, h('span', {}, 'Starts leaving at'),
+        h('input', { type: 'number', step: '0.25', class: 'val', value: String(departFrom), onchange: set('departFromHour') })),
+      h('label', {}, h('span', {}, 'Everyone’s out by'),
+        h('input', { type: 'number', step: '0.25', class: 'val', value: String(st.departHour), onchange: set('departHour') }))),
+    h('p', { class: 'small muted' },
+      isFixed
+        ? `Fixed: everyone arrives ${clockTime(st.arriveHour)}, leaves ${clockTime(st.departHour)}.`
+        : `Arrival ramps ${clockTime(st.arriveHour)}–${clockTime(arriveBy)}; ` +
+          `departure ramps ${clockTime(departFrom)}–${clockTime(st.departHour)}.`));
+}
+
+function scheduleTypesEditor() {
+  return h('div', {}, state.scheduleTypes.map((st, i) => scheduleTypeCard(st, i)));
+}
+
+/**
  * Describe a setting's schedule in words: "20 from month -2, then 40 from month 8".
  *
  * A chip saying "by month" tells you THAT something varies without telling you what, which just
@@ -367,6 +411,12 @@ function renderInputs() {
         format: 'hour', onChange: setSetting('hoursClose'),
       }),
     ),
+
+    section('Schedule types', 'When a schedule’s children actually arrive and leave, within the hours above — ' +
+      'this is what "Who covers which room" measures staffing against, separately from the building’s open/close hours. ' +
+      'Set "Arrives as early as" equal to "Everyone’s in by" for a fixed arrival time (and likewise for departure); ' +
+      'widen the gap to spread attendance, and staffing, across a window instead of switching on at an instant.',
+      scheduleTypesEditor()),
 
     section('Staffing', 'Headcount is derived from licensed ratios and the length of your operating day.',
       rolesEditor(),

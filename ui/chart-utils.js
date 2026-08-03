@@ -27,6 +27,15 @@ export const usdFull = (v) => {
   return (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString();
 };
 
+/** Decimal hour -> "7:30am". */
+export function clockTime(v) {
+  const hh = Math.floor(v);
+  const mm = Math.round((v - hh) * 60);
+  const ampm = hh >= 12 ? 'pm' : 'am';
+  const h12 = hh % 12 === 0 ? 12 : hh % 12;
+  return `${h12}${mm ? ':' + String(mm).padStart(2, '0') : ''}${ampm}`;
+}
+
 export function niceCeil(v) {
   if (v <= 0) return 1;
   const exp = Math.floor(Math.log10(v));
